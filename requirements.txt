@@ -1,0 +1,7 @@
+
+PyQt5
+fastapi
+uvicorn
+vosk
+pyttsx3
+speechrecognition
