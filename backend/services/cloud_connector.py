@@ -118,7 +118,7 @@ class CloudConnector:
         with ws_client.connect(endpoint, open_timeout=8) as ws:
             self.is_connected = True
             self._backoff_delay = 1.0
-            logger.info(f"🟢 Workstation successfully connected to DRAX Cloud ({self.device_id})")
+            logger.info(f"[ONLINE] Workstation successfully connected to DRAX Cloud ({self.device_id})")
 
             # Send online handshake
             handshake_payload = {
