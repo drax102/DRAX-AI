@@ -52,14 +52,15 @@ app = FastAPI(
     description="Public Cloud API & Device Orchestrator for DRAX AI",
 )
 
-# Configure CORS (supports explicit origins + all Vercel deployment domains)
+# Configure CORS for all web clients (Vercel, custom domains, localhost)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_origin_regex=r"https://.*\.vercel\.app" if "*" not in ALLOWED_ORIGINS else None,
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_origins=["*"],
+    allow_origin_regex=r"^https?://.*",
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 

@@ -5,12 +5,19 @@ function getApiBase() {
   const urlParams = new URLSearchParams(window.location.search);
   const paramApi = urlParams.get('api');
   if (paramApi) {
-    localStorage.setItem('drax_api_url', paramApi.replace(/\/$/, ''));
-    return paramApi.replace(/\/$/, '');
+    const clean = paramApi.replace(/\/$/, '');
+    localStorage.setItem('drax_api_url', clean);
+    return clean;
   }
 
   const stored = localStorage.getItem('drax_api_url');
-  if (stored) return stored.replace(/\/$/, '');
+  if (stored) {
+    const clean = stored.replace(/\/$/, '');
+    if (window.location.protocol === 'https:' && clean.startsWith('http://') && !clean.includes('localhost') && !clean.includes('127.0.0.1')) {
+      return clean.replace('http://', 'https://');
+    }
+    return clean;
+  }
 
   if (window.DRAX_API_URL) return window.DRAX_API_URL.replace(/\/$/, '');
   if (window.__DRAX_API_URL__) return window.__DRAX_API_URL__.replace(/\/$/, '');
@@ -187,7 +194,7 @@ function initChat() {
       console.log('[DRAX API] Executing command:', cmd, '-> Endpoint:', `${API_BASE}/command`);
       const resp = await fetch(`${API_BASE}/command`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify({ command: cmd })
       });
       if (!resp.ok) {
@@ -345,7 +352,7 @@ window.executeFromDevice = async function(cmd, deviceId = null) {
     console.log('[DRAX API] Dispatching command for device:', deviceId, 'cmd:', cmd);
     const resp = await fetch(`${API_BASE}/command`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify({ command: cmd, device_id: deviceId })
     });
     if (!resp.ok) {
@@ -353,6 +360,7 @@ window.executeFromDevice = async function(cmd, deviceId = null) {
       try {
         const errJson = await resp.json();
         if (errJson.detail) errDetail = errJson.detail;
+        else if (errJson.message) errDetail = errJson.message;
       } catch (_) {}
       console.warn('[DRAX API] Device command failed:', resp.status, errDetail);
       appendMessage(`Error: ${errDetail}`, 'drax');
@@ -360,10 +368,14 @@ window.executeFromDevice = async function(cmd, deviceId = null) {
     }
     const data = await resp.json();
     console.log('[DRAX API] Device command response:', data);
-    appendMessage(data.response || 'Action sent to Windows workstation.', 'drax');
+    appendMessage(data.response || 'Action completed on workstation.', 'drax');
   } catch (e) {
     console.error('[DRAX API] Device dispatch error:', e);
-    appendMessage(`Error: ${e.message}`, 'system');
+    let userFriendly = e.message || 'Device dispatch failed.';
+    if (e.name === 'TypeError' && String(e.message).includes('Failed to fetch')) {
+      userFriendly = 'Could not reach DRAX Cloud API. Please verify the backend is online.';
+    }
+    appendMessage(`Error: ${userFriendly}`, 'system');
   }
 };
 

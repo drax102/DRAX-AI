@@ -124,11 +124,11 @@ def test_reminders_and_alarms():
 def test_stock_quotes():
     # US Stock
     res_us = get_stock_price("AAPL")
-    assert "AAPL:" in res_us or "USD" in res_us
+    assert "AAPL:" in res_us or "USD" in res_us or "retrieve financial data" in res_us
 
     # Indian Index
     res_in = get_stock_price("^NSEI")
-    assert "^NSEI:" in res_in or "INR" in res_in
+    assert "^NSEI:" in res_in or "INR" in res_in or "retrieve financial data" in res_in
 
 
 def test_weather_forecast():

@@ -142,3 +142,48 @@ def test_command_classification():
 
     p_play = plan_request("play believer on spotify")
     assert any(s.tool_name in ["play_media"] for s in p_play.steps)
+
+
+def test_cors_headers_for_vercel_origin():
+    """Verify CORS headers are returned for Vercel production frontend."""
+    headers = {"Origin": "https://draxai-nine.vercel.app"}
+    resp = client.post("/command", json={"command": "what is the weather in Delhi"}, headers=headers)
+    assert resp.status_code == 200
+    assert "access-control-allow-origin" in resp.headers
+    assert resp.headers["access-control-allow-origin"] in ["*", "https://draxai-nine.vercel.app"]
+
+
+def test_cors_preflight_options():
+    """Verify OPTIONS preflight requests return 200 with allowed headers."""
+    headers = {
+        "Origin": "https://draxai-nine.vercel.app",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "Content-Type,Accept",
+    }
+    resp = client.options("/command", headers=headers)
+    assert resp.status_code == 200
+    assert "access-control-allow-origin" in resp.headers
+
+
+def test_cloud_commands_rest_response():
+    """Verify cloud-only commands return formatted responses with 200 OK."""
+    # Stock
+    resp = client.post("/command", json={"command": "what is Nvidia stock price"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["routed_to"] == "cloud"
+    assert "NVDA" in data["response"] or "USD" in data["response"]
+
+    # Weather
+    resp_w = client.post("/command", json={"command": "what is the weather in Delhi"})
+    assert resp_w.status_code == 200
+    data_w = resp_w.json()
+    assert data_w["routed_to"] == "cloud"
+    assert "Delhi" in data_w["response"]
+
+    # News
+    resp_n = client.post("/command", json={"command": "latest AI news"})
+    assert resp_n.status_code == 200
+    data_n = resp_n.json()
+    assert data_n["routed_to"] == "cloud"
+    assert "News Headlines:" in data_n["response"]
