@@ -69,20 +69,31 @@ def _parse_single_clause(clause: str) -> Optional[ActionStep]:
     if any(k in c for k in ["morning briefing", "daily briefing", "good morning drax", "my briefing", "give me my briefing"]):
         return ActionStep(tool_name="get_daily_briefing", args={}, description="Daily briefing")
 
-    # 4. Explicit Web Search (High priority: "search AI news on Google", "can you search recipe for...")
+    # 4. Explicit Web Search (High priority: "search AI news on Google", "search Google for Python", "search YouTube for Arijit Singh")
     if any(c.startswith(p) for p in ["search ", "search for ", "can you search ", "please search ", "look up ", "google "]):
         q = c
+        engine = "google"
+        if c.startswith("search youtube for ") or " on youtube" in c:
+            engine = "youtube"
+
         for prefix in [
+            "can you search google for the ", "can you search google for ", "can you search youtube for the ", "can you search youtube for ",
             "can you search for the ", "can you search for ", "can you search the ", "can you search ",
+            "please search google for the ", "please search google for ", "please search youtube for the ", "please search youtube for ",
             "please search for the ", "please search for ", "please search the ", "please search ",
-            "search for the ", "search for ", "search the ", "search ", "look up ", "google "
+            "search google for the ", "search google for ", "search youtube for the ", "search youtube for ",
+            "search for the ", "search for ", "search the ", "search ", "look up on google for ", "look up for ", "look up ", "google for ", "google "
         ]:
             if q.startswith(prefix):
                 q = q[len(prefix):].strip()
                 break
         m = re.search(r"^(.+?)(?:\s+on\s+(\w+))?$", q)
         query = m.group(1).strip() if m else q
-        engine = m.group(2) if (m and m.group(2)) else "google"
+        if m and m.group(2):
+            engine = m.group(2).lower()
+        
+        if engine == "youtube":
+            return ActionStep(tool_name="play_media", args={"query": query, "platform": "youtube"}, description=f"YouTube {query}")
         return ActionStep(tool_name="search_web", args={"query": query, "engine": engine}, description=f"Search {query}")
 
     # 5. Alarms

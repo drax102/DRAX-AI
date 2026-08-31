@@ -1,4 +1,4 @@
-﻿"""
+"""
 test_production_audit.py — Comprehensive end-to-end production audit tests for DRAX AI.
 Validates:
 1. CORS configuration and OPTIONS preflights
@@ -206,3 +206,57 @@ def test_command_polling_nonexistent(client):
     """Polling a non-existent command ID returns 404."""
     response = client.get("/commands/nonexistent_cmd_id_12345")
     assert response.status_code == 404
+
+
+# ─── 6. Application & Search Planning Audit ──────────────────────────────────
+
+def test_google_search_planning():
+    """Verify search Google for instagram.in plans search_web correctly."""
+    from backend.agent.planner import plan_request
+    plan = plan_request("search Google for instagram.in")
+    assert not plan.is_empty
+    assert plan.steps[0].tool_name == "search_web"
+    assert plan.steps[0].args["query"] == "instagram.in"
+    assert plan.steps[0].args["engine"] == "google"
+
+
+def test_whatsapp_and_gta_planning():
+    """Verify open WhatsApp and open GTA V plan open_app correctly."""
+    from backend.agent.planner import plan_request
+    plan_wa = plan_request("open WhatsApp")
+    assert not plan_wa.is_empty
+    assert plan_wa.steps[0].tool_name == "open_app"
+    assert "whatsapp" in plan_wa.steps[0].args["app_name"].lower()
+
+    plan_gta = plan_request("open GTA V")
+    assert not plan_gta.is_empty
+    assert plan_gta.steps[0].tool_name == "open_app"
+    assert "gta" in plan_gta.steps[0].args["app_name"].lower()
+
+
+def test_cloud_features_work_independently_when_agent_offline(client):
+    """Verify cloud features work 100% when no Windows Agent is connected."""
+    device_registry._sockets.clear()
+    device_manager.device_sockets.clear()
+
+    # Weather
+    w_res = client.post("/command", json={"command": "what is the weather in Delhi"})
+    assert w_res.status_code == 200
+    assert w_res.json()["success"] is True
+
+    # Stocks
+    s_res = client.post("/command", json={"command": "what is Nvidia stock price"})
+    assert s_res.status_code == 200
+    assert s_res.json()["success"] is True
+
+    # News
+    n_res = client.post("/command", json={"command": "latest AI news"})
+    assert n_res.status_code == 200
+    assert n_res.json()["success"] is True
+
+    # Knowledge
+    k_res = client.post("/command", json={"command": "who is Alan Turing"})
+    assert k_res.status_code == 200
+    assert k_res.json()["success"] is True
+    assert "Alan Turing" in k_res.json()["message"] or "Turing" in k_res.json()["message"]
+
