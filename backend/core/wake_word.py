@@ -146,7 +146,7 @@ def listen_for_wake_word(on_wake_detected_cb, stop_event: threading.Event | None
     threshold = settings.get("assistant", "wake_confidence_threshold", 0.60)
     cooldown = settings.get("assistant", "cooldown_seconds", 1.5)
 
-    logger.info("🟢 DRAX Wake Word Listener Active — Listening for 'Hey Drax'...")
+    logger.info("[ACTIVE] DRAX Wake Word Listener Active - Listening for 'Hey Drax'...")
 
     last_trigger = 0.0
 
@@ -184,7 +184,7 @@ def listen_for_wake_word(on_wake_detected_cb, stop_event: threading.Event | None
                             continue
 
                         score = _score_against_wake_words(text)
-                        logger.info(f"🗣️ Audio heard: '{text}' (wake confidence: {score:.2f})")
+                        logger.info(f"[AUDIO] Heard: '{text}' (wake confidence: {score:.2f})")
 
                         if _is_false_positive(text):
                             continue
@@ -194,7 +194,7 @@ def listen_for_wake_word(on_wake_detected_cb, stop_event: threading.Event | None
                             if now - last_trigger < cooldown:
                                 continue
                             last_trigger = now
-                            logger.info(f"🟣 Wake Word Triggered: '{text}'")
+                            logger.info(f"[TRIGGER] Wake Word Triggered: '{text}'")
                             if on_wake_detected_cb:
                                 on_wake_detected_cb()
 
