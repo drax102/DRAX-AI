@@ -117,14 +117,17 @@ class DeviceManager:
 
         logger.info(f"Device '{device_id}' ({name}) connected via WebSocket.")
 
-    def unregister_device_socket(self, device_id: str):
-        """Handle device socket disconnection."""
-        if device_id in self.device_sockets:
-            del self.device_sockets[device_id]
-        if device_id in self.devices:
-            self.devices[device_id]["status"] = "offline"
-            self.devices[device_id]["last_seen"] = time.time()
-        logger.info(f"Device '{device_id}' disconnected from WebSocket.")
+    def unregister_device_socket(self, device_id: str, websocket: Optional[WebSocket] = None):
+        """Handle device socket disconnection safely without removing replaced connections."""
+        current_socket = self.device_sockets.get(device_id)
+        if websocket is None or current_socket is websocket:
+            self.device_sockets.pop(device_id, None)
+            if device_id in self.devices:
+                self.devices[device_id]["status"] = "offline"
+                self.devices[device_id]["last_seen"] = time.time()
+            logger.info(f"Device '{device_id}' disconnected from WebSocket.")
+        else:
+            logger.info(f"Stale disconnect ignored for device '{device_id}' (socket already replaced).")
 
     def update_heartbeat(self, device_id: str, telemetry: Optional[Dict[str, Any]] = None):
         """Update last seen timestamp and telemetry for an active device."""
@@ -150,6 +153,7 @@ class DeviceManager:
                 "name": info.get("name", "Windows PC"),
                 "platform": info.get("platform", "Windows"),
                 "status": status,
+                "online": is_online,
                 "last_seen": info.get("last_seen", 0),
                 "telemetry": info.get("telemetry", {}),
             })

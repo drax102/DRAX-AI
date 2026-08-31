@@ -117,8 +117,11 @@ def get_health():
 @app.get("/status")
 def get_status():
     devices = device_manager.get_devices()
-    online_devs = [d for d in devices if d["status"] == "online"]
+    online_devs = [d for d in devices if d.get("status") == "online" or d.get("online") is True]
     latest_telemetry = online_devs[0].get("telemetry", {}) if online_devs else {}
+    first_online_name = online_devs[0].get("name", "Windows PC") if online_devs else None
+    first_online_id = online_devs[0].get("device_id") if online_devs else None
+
     return {
         "status": "online",
         "agent_status": "online" if online_devs else "offline",
@@ -126,6 +129,8 @@ def get_status():
         "version": "2.0.0",
         "devices": devices,
         "connected_devices": len(online_devs),
+        "online_device_name": first_online_name,
+        "online_device_id": first_online_id,
         "telemetry": latest_telemetry,
         "timestamp": time.time(),
     }
@@ -375,8 +380,8 @@ async def ws_device_endpoint(websocket: WebSocket, device_id: str):
                 telemetry = data.get("telemetry", {})
                 device_manager.update_heartbeat(device_id, telemetry)
             elif msg_type == "command_result":
-                req_id = data.get("request_id")
-                result_text = data.get("result", "Action completed on workstation.")
+                req_id = data.get("request_id") or data.get("command_id")
+                result_text = data.get("result") or data.get("response", "Action completed on workstation.")
                 success = data.get("success", True)
                 if req_id:
                     device_manager.resolve_pending_request(req_id, result_text, success=success)
@@ -384,10 +389,10 @@ async def ws_device_endpoint(websocket: WebSocket, device_id: str):
             else:
                 logger.info(f"Received update from device '{device_id}': {msg_type}")
     except WebSocketDisconnect:
-        device_manager.unregister_device_socket(device_id)
+        device_manager.unregister_device_socket(device_id, websocket=websocket)
     except Exception as e:
         logger.warning(f"Device WebSocket error for '{device_id}': {e}")
-        device_manager.unregister_device_socket(device_id)
+        device_manager.unregister_device_socket(device_id, websocket=websocket)
 
 
 @app.websocket("/ws")

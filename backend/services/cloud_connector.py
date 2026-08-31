@@ -43,6 +43,11 @@ class CloudConnector:
             # Generate deterministic or persistent ID
             comp_name = os.getenv("COMPUTERNAME", "PC").lower().replace(" ", "_")
             dev_id = f"drax_{comp_name}_{uuid.uuid4().hex[:6]}"
+            try:
+                settings.set("cloud", "device_id", dev_id)
+                settings.save()
+            except Exception:
+                pass
         return dev_id
 
     def request_pairing_code(self) -> str:
@@ -180,7 +185,7 @@ class CloudConnector:
 
     def _handle_execute_command(self, ws, payload: dict):
         """Execute cloud-dispatched instruction on local Windows workstation."""
-        req_id = payload.get("request_id")
+        req_id = payload.get("request_id") or payload.get("command_id")
         steps = payload.get("steps", [])
         command_text = payload.get("command", "")
         results = []
@@ -219,8 +224,10 @@ class CloudConnector:
             ws.send(json.dumps({
                 "type": "command_result",
                 "request_id": req_id,
+                "command_id": req_id,
                 "success": success,
                 "result": combined_result,
+                "response": combined_result,
             }))
             logger.info(f"Dispatched execution result for [{req_id}] back to Cloud.")
         except Exception as e:

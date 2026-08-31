@@ -599,25 +599,26 @@ async function loadTelemetry() {
     const badgeEl = document.getElementById('agent-state-label');
     const indicatorEl = document.getElementById('status-indicator');
 
-    const hasOnlinePC = (data.connected_devices > 0) || (data.devices && data.devices.some(d => d.status === 'online'));
+    const hasOnlinePC = (data.connected_devices > 0) || (data.devices && data.devices.some(d => d.status === 'online' || d.online === true));
 
-    if (cpuEl) cpuEl.innerText = `${t.cpu_percent || 0}%`;
-    if (ramEl) ramEl.innerText = `${t.ram_percent || 0}% (${t.ram_used_gb || 0} GB)`;
+    if (cpuEl) cpuEl.innerText = `${t.cpu_percent || t.cpu_usage || 0}%`;
+    if (ramEl) ramEl.innerText = `${t.ram_percent || t.ram_usage || 0}% (${t.ram_used_gb || t.ram_formatted || 0})`;
     if (osEl) osEl.innerText = t.os_name || 'Windows 11';
     if (stateEl) stateEl.innerText = hasOnlinePC ? 'ONLINE & LISTENING' : 'STANDBY (NO PC)';
 
     if (badgeEl) {
       if (hasOnlinePC) {
-        const firstOnline = data.devices.find(d => d.status === 'online');
-        badgeEl.innerHTML = `● DRAX PC ONLINE<br><span style="font-size: 0.72rem; color: #00f3ff; font-weight: normal;">${firstOnline ? firstOnline.name : 'Workstation'}</span>`;
+        const firstOnline = (data.devices || []).find(d => d.status === 'online' || d.online === true);
+        const devName = firstOnline ? (firstOnline.name || firstOnline.device_id) : 'Windows PC';
+        badgeEl.innerHTML = `● DRAX CLOUD ONLINE<br><span style="font-size: 0.72rem; color: #00ff88; font-weight: normal;">● AGENT: ${devName}</span>`;
         if (indicatorEl) {
           indicatorEl.style.background = '#00ff88';
           indicatorEl.style.boxShadow = '0 0 8px #00ff88';
         }
       } else {
-        badgeEl.innerText = '● PC OFFLINE';
+        badgeEl.innerHTML = `● DRAX CLOUD ONLINE<br><span style="font-size: 0.72rem; color: #8b949e; font-weight: normal;">○ AGENT OFFLINE</span>`;
         if (indicatorEl) {
-          indicatorEl.style.background = '#ff4444';
+          indicatorEl.style.background = '#ffaa00';
           indicatorEl.style.boxShadow = 'none';
         }
       }

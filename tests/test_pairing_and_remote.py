@@ -187,3 +187,50 @@ def test_cloud_commands_rest_response():
     data_n = resp_n.json()
     assert data_n["routed_to"] == "cloud"
     assert "News Headlines:" in data_n["response"]
+
+
+def test_socket_replacement_safe_disconnect():
+    """Verify an old socket's disconnect does not unregister a new replacement socket."""
+    dev_id = "test_replace_pc"
+    dummy_ws_old = object()
+    dummy_ws_new = object()
+
+    # Old socket connects
+    device_manager.register_device_socket(dev_id, dummy_ws_old, name="Workstation")
+    assert dev_id in device_manager.device_sockets
+    assert device_manager.device_sockets[dev_id] is dummy_ws_old
+
+    # New socket reconnects before old disconnect cleanup runs
+    device_manager.register_device_socket(dev_id, dummy_ws_new, name="Workstation")
+    assert device_manager.device_sockets[dev_id] is dummy_ws_new
+
+    # Old socket cleanup runs with old socket reference
+    device_manager.unregister_device_socket(dev_id, websocket=dummy_ws_old)
+    # The replacement socket must still be active
+    assert dev_id in device_manager.device_sockets
+    assert device_manager.device_sockets[dev_id] is dummy_ws_new
+    assert device_manager.devices[dev_id]["status"] == "online"
+
+    # Now new socket disconnects
+    device_manager.unregister_device_socket(dev_id, websocket=dummy_ws_new)
+    assert dev_id not in device_manager.device_sockets
+    assert device_manager.devices[dev_id]["status"] == "offline"
+
+
+def test_single_source_of_truth_status():
+    """Verify /status matches device_manager state exactly."""
+    dev_id = "status_sync_pc"
+    device_manager.register_device_socket(dev_id, object(), name="SyncPC")
+    device_manager.update_heartbeat(dev_id, {"cpu_percent": 25.0, "ram_percent": 50.0})
+
+    resp = client.get("/status")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "online"
+    assert data["agent_status"] == "online"
+    assert data["connected_devices"] >= 1
+    target = next((d for d in data["devices"] if d["device_id"] == dev_id), None)
+    assert target is not None
+    assert target["online"] is True
+    assert target["status"] == "online"
+    assert target["telemetry"]["cpu_percent"] == 25.0
