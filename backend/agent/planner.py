@@ -166,44 +166,67 @@ def _parse_single_clause(clause: str) -> Optional[ActionStep]:
             city_clean = re.sub(r"^(?:what is|what's|how is|check|show me)?\s*(?:the)?\s*(?:weather|temperature)(?:\s+in)?\s*", "", c).strip()
             if city_clean:
                 city = city_clean
-        city = city.strip(" ?.!,'\":;").strip()
-        return ActionStep(tool_name="get_weather", args={"city": city or "Delhi"}, description=f"Weather in {city or 'Delhi'}")
+        city = city.strip(" ?.!,'\":;").strip() or "Delhi"
+        context.update_turn(intent="get_weather", domain="weather", entity=city)
+        return ActionStep(tool_name="get_weather", args={"city": city}, description=f"Weather in {city}")
 
     # 11. Media & Playback Controls
     if c in ["pause", "pause music", "pause song", "resume", "resume music", "resume song", "toggle music", "stop music"]:
+        context.update_turn(intent="pause_media", domain="media")
         return ActionStep(tool_name="pause_media", args={}, description="Pause/resume media")
 
-    if any(k in c for k in ["next song", "next track", "skip song", "skip track"]):
+    if any(k in c for k in ["next song", "next track", "skip song", "skip track", "skip this", "next"]):
+        context.update_turn(intent="next_track", domain="media")
         return ActionStep(tool_name="next_track", args={}, description="Next track")
 
     if any(k in c for k in ["previous song", "previous track", "last song", "last track"]):
+        context.update_turn(intent="previous_track", domain="media")
         return ActionStep(tool_name="previous_track", args={}, description="Previous track")
 
     if c.startswith("play ") or "play some " in c or "listen to " in c:
         q = re.sub(r"^(?:play|listen to|play some)\s+", "", c).strip()
         if q.lower() in ["song", "music", "song on spotify", "music on spotify", "spotify"]:
+            context.update_turn(intent="pause_media", domain="media")
             return ActionStep(tool_name="pause_media", args={}, description="Toggle media playback")
         platform = "youtube" if "on youtube" in q else "spotify"
+        context.update_turn(intent="play_media", domain="media", entity=q)
         return ActionStep(tool_name="play_media", args={"query": q, "platform": platform}, description=f"Play {q}")
 
-    if "volume" in c or "mute" in c or "unmute" in c:
-        act = "down" if "down" in c or "lower" in c or "quieter" in c else ("mute" if "mute" in c else "up")
+    if "volume" in c or "mute" in c or "unmute" in c or "louder" in c or "quieter" in c:
+        act = "down" if "down" in c or "lower" in c or "quieter" in c or "softer" in c else ("mute" if "mute" in c else "up")
+        context.update_turn(intent="volume_control", domain="media")
         return ActionStep(tool_name="volume_control", args={"action": act}, description="Adjust volume")
 
-    # 12. General Knowledge / Wikipedia
+    # 12. Communication (Voice Calls, SMS, WhatsApp, Email)
+    if c.startswith("call ") or c.startswith("phone ") or c.startswith("make a call to ") or c.startswith("dial "):
+        contact = re.sub(r"^(?:make a call to|call|phone|dial)\s+", "", c).strip()
+        context.update_turn(intent="make_call", domain="communication", entity=contact)
+        return ActionStep(tool_name="make_call", args={"contact": contact}, description=f"Call {contact}")
+
+    if c.startswith("send sms to ") or c.startswith("send message to ") or c.startswith("text ") or c.startswith("sms "):
+        m_sms = re.search(r"^(?:send sms to|send message to|text|sms)\s+([a-zA-Z0-9\s]+?)(?:\s+(?:saying|that|with message|message)\s+(.+))?$", c)
+        if m_sms:
+            rec = m_sms.group(1).strip()
+            msg = m_sms.group(2).strip() if m_sms.group(2) else ""
+            context.update_turn(intent="send_sms", domain="communication", entity=rec)
+            return ActionStep(tool_name="send_sms", args={"recipient": rec, "message": msg}, description=f"SMS {rec}")
+
+    # 13. General Knowledge / Wikipedia
     if any(c.startswith(p) for p in ["who is ", "who was ", "what is ", "what was ", "tell me about ", "can you tell me about "]) and not any(w in c for w in ["the weather", "the stock", "my task", "my alarm"]):
         return ActionStep(tool_name="get_knowledge", args={"query": clause}, description=f"Knowledge query for {clause}")
 
-    # 13. Website Opening
+    # 14. Website Opening
     if c.startswith("open website ") or c.startswith("go to ") or c.endswith((".com", ".org", ".io", ".in", ".ai")):
+        context.update_turn(intent="open_url", domain="browser", entity=clause)
         return ActionStep(tool_name="open_url", args={"url": clause}, description=f"Open website {clause}")
 
-    # 14. App Closing
+    # 15. App Closing
     if c.startswith("close ") or c.startswith("exit ") or c.startswith("quit ") or c.startswith("terminate "):
         app_to_close = re.sub(r"^(?:close|exit|quit|terminate)\s+", "", c).strip()
+        context.update_turn(intent="close_app", domain="app", entity=app_to_close)
         return ActionStep(tool_name="close_app", args={"app_name": app_to_close}, description=f"Close {app_to_close}")
 
-    # 15. File & Folder Operations
+    # 16. File & Folder Operations
     if "open downloads" in c: return ActionStep(tool_name="open_folder", args={"folder_name": "downloads"})
     if "open documents" in c: return ActionStep(tool_name="open_folder", args={"folder_name": "documents"})
     if "open desktop" in c: return ActionStep(tool_name="open_folder", args={"folder_name": "desktop"})
@@ -211,14 +234,17 @@ def _parse_single_clause(clause: str) -> Optional[ActionStep]:
         fname = re.sub(r"^(?:find my|find file|search file|find)\s+", "", c).strip()
         return ActionStep(tool_name="find_file", args={"filename": fname}, description=f"Find file {fname}")
 
-    # 16. App Opening (GTA, Chrome, Spotify, Feedback Hub, etc.)
+    # 17. App Opening (GTA, Chrome, Spotify, Feedback Hub, etc.)
     if c.startswith("open ") or c.startswith("launch ") or c.startswith("start ") or c.startswith("play game "):
         app_name = re.sub(r"^(?:open|launch|start|play game)\s+", "", c).strip()
         if "." in app_name and not app_name.endswith(".exe"):
+            context.update_turn(intent="open_url", domain="browser", entity=app_name)
             return ActionStep(tool_name="open_url", args={"url": app_name}, description=f"Open site {app_name}")
+        context.update_turn(intent="open_app", domain="app", entity=app_name)
         return ActionStep(tool_name="open_app", args={"app_name": app_name}, description=f"Open app {app_name}")
 
     # Fallback to general app opening or search
+    context.update_turn(intent="open_app", domain="app", entity=clause)
     return ActionStep(tool_name="open_app", args={"app_name": clause}, description=f"Open {clause}")
 
 

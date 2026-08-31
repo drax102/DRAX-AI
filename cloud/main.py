@@ -25,6 +25,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from cloud.devices import device_manager
+from backend.agent.capability_router import capability_router
 from backend.agent.planner import plan_request
 from backend.agent.tool_registry import registry
 import backend.tools.cloud_tools
@@ -181,7 +182,7 @@ def generate_device_pairing(req: PairGenerateRequest):
 
 @app.post("/api/pair/connect")
 def connect_paired_device(req: PairConnectRequest):
-    """Web Dashboard submits pairing code to connect to Windows Agent."""
+    """Web Dashboard submits pairing code to connect to Windows Agent or mobile device."""
     device = device_manager.verify_and_pair(req.pairing_code)
     if not device:
         raise HTTPException(status_code=400, detail="Invalid or expired pairing code.")
@@ -193,74 +194,96 @@ def list_devices():
     return {"devices": device_manager.get_devices()}
 
 
-# ─── Cloud Command Execution & Relay ────────────────────────────────────────
+@app.post("/api/devices/{device_id}/primary")
+def set_primary_device_endpoint(device_id: str):
+    """Set specified device as primary device."""
+    ok = device_manager.set_primary_device(device_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Device not found.")
+    return {"status": "success", "device_id": device_id, "is_primary": True}
 
-LOCAL_TOOL_CATEGORIES = {"applications", "browser", "media", "system", "screen", "files"}
 
+# ─── Cloud Command Execution & Universal Capability Relay ────────────────────
 
 @app.post("/command")
 async def execute_command(payload: CommandPayload):
     """
-    Process command from Web/Mobile client.
-    If command requires local Windows OS capabilities (e.g. open chrome, play music, lock pc),
-    it is securely routed to the paired Windows Agent via WebSocket and awaits the live result.
-    Otherwise, cloud services handle it directly.
+    Universal multi-device command router.
+    Routes intents based on required capabilities to matching online devices (Windows, Android, etc.)
+    or executes cloud intelligence skills server-side.
     """
     cmd = payload.command.strip()
     if not cmd:
         raise HTTPException(status_code=400, detail="Command cannot be empty.")
 
-    # Plan the request
+    req_id = f"cmd_{int(time.time() * 1000)}_{uuid.uuid4().hex[:4]}"
+    ts_now = datetime.now(timezone.utc).isoformat()
+
+    # 1. Plan the request into ActionSteps
     plan = plan_request(cmd)
-    needs_local = any(step.tool_name in [
-        "open_app", "close_app", "play_media", "pause_media", "next_track", "previous_track",
-        "browser_navigate", "browser_click", "browser_type", "browser_scroll", "lock_pc",
-        "take_screenshot", "screen_read", "shutdown_pc", "restart_pc", "find_file", "open_folder",
-        "open_url", "browser_open_tab", "browser_close_tab", "browser_hover", "browser_back", "browser_forward"
-    ] for step in plan.steps)
+    primary_intent = plan.steps[0].tool_name if plan.steps else "unknown"
 
-    # If it requires local Windows execution, route over WebSocket if device is online
-    if needs_local:
-        target = device_manager.get_online_device(payload.device_id)
-        if not target:
-            # Fallback for browser search / url in pure cloud mode if user is searching
-            cloud_fallbacks = []
-            for s in plan.steps:
-                if s.tool_name == "search_web":
-                    q = s.args.get("query", cmd)
-                    cloud_fallbacks.append(f"Web search for '{q}': https://www.google.com/search?q={urllib.parse.quote(q)}")
-                elif s.tool_name == "open_url":
-                    u = s.args.get("url", cmd)
-                    cloud_fallbacks.append(f"Website URL: {u}")
+    # 2. Check if any step requires device capabilities
+    device_steps = []
+    cloud_steps = []
 
-            if cloud_fallbacks:
+    for step in plan.steps:
+        decision = capability_router.route_step(step.tool_name, preferred_device_id=payload.device_id)
+        if decision.is_cloud:
+            cloud_steps.append((step, decision))
+        else:
+            device_steps.append((step, decision))
+
+    # 3. Route Device Capabilities
+    if device_steps:
+        # Check first device requirement
+        first_step, first_decision = device_steps[0]
+
+        if not first_decision.is_available:
+            # Fallback for browser search / URL query in pure cloud mode if user is searching
+            if first_step.tool_name in ["search_web", "open_url"]:
+                q = first_step.args.get("query", first_step.args.get("url", cmd))
+                res_url = f"Web search for '{q}': https://www.google.com/search?q={urllib.parse.quote(q)}"
                 return {
+                    "command_id": req_id,
+                    "status": "success",
+                    "intent": first_step.tool_name,
+                    "device_id": None,
+                    "result": res_url,
+                    "timestamp": ts_now,
                     "success": True,
                     "command": cmd,
-                    "response": "\n\n".join(cloud_fallbacks),
+                    "response": res_url,
                     "routed_to": "cloud",
-                    "device_id": None,
                     "error": None,
                 }
 
+            unsupported_msg = first_decision.unsupported_message or "No connected device is currently available for this action."
+            err_code = "AGENT_OFFLINE" if first_decision.required_capability in ["apps", "media", "system", "volume", "screen", "files", "browser", "telemetry"] else "CAPABILITY_UNAVAILABLE"
+            err_layer = "WINDOWS AGENT" if err_code == "AGENT_OFFLINE" else "DEVICE_ROUTER"
             return {
+                "command_id": req_id,
+                "status": "failed",
+                "intent": first_step.tool_name,
+                "device_id": None,
+                "result": unsupported_msg,
+                "timestamp": ts_now,
                 "success": False,
                 "command": cmd,
-                "response": "No Windows Agent is connected. Open Drax AI on your PC and pair this device.",
+                "response": unsupported_msg,
                 "routed_to": None,
-                "device_id": None,
                 "error": {
-                    "code": "AGENT_OFFLINE",
-                    "layer": "WINDOWS AGENT",
-                    "message": "No paired Windows Agent is currently connected online to execute local PC actions.",
-                    "details": "Start Drax AI on your Windows workstation and verify the connection in system tray.",
+                    "code": err_code,
+                    "layer": err_layer,
+                    "message": unsupported_msg,
+                    "details": f"Required capability: '{first_decision.required_capability}'. Connect a compatible device.",
                 },
             }
 
-        dev_id, ws = target
-        req_id = f"req_{int(time.time() * 1000)}_{uuid.uuid4().hex[:4]}"
+        dev_id = first_decision.device_id
+        ws = first_decision.websocket
         fut = device_manager.create_pending_request(req_id)
-        logger.info(f"COMMAND ROUTING: command_id={req_id} route=windows_agent device={dev_id} cmd='{cmd}'")
+        logger.info(f"CAPABILITY ROUTING: command_id={req_id} cap={first_decision.required_capability} target={dev_id} cmd='{cmd}'")
 
         try:
             await ws.send_json({
@@ -270,56 +293,73 @@ async def execute_command(payload: CommandPayload):
                 "command": cmd,
                 "steps": [{"tool": s.tool_name, "args": s.args} for s in plan.steps],
             })
-            # Await asynchronous execution response from Windows Agent with sensible 4s relay window
+            # Await asynchronous execution response from device with sensible 4s relay window
             try:
                 res_obj = await asyncio.wait_for(fut, timeout=4.0)
-                agent_result = res_obj.get("result") or res_obj.get("response", f"Executed '{cmd}' on workstation.")
+                agent_result = res_obj.get("result") or res_obj.get("response", f"Executed '{cmd}' on device.")
                 agent_success = res_obj.get("success", True)
                 agent_error = res_obj.get("error")
 
                 return {
+                    "command_id": req_id,
+                    "status": "success" if agent_success else "failed",
+                    "intent": primary_intent,
+                    "device_id": dev_id,
+                    "result": agent_result,
+                    "timestamp": ts_now,
                     "success": agent_success,
                     "command": cmd,
                     "response": agent_result,
                     "routed_to": dev_id,
-                    "device_id": dev_id,
                     "error": agent_error,
                 }
             except asyncio.TimeoutError:
-                # Fast asynchronous acknowledgement: Windows action has been dispatched and is executing
+                # Fast asynchronous acknowledgement: Action has been dispatched and is executing
                 logger.info(f"RELAY ACKNOWLEDGED: command_id={req_id} device={dev_id} dispatched and executing.")
+                ack_msg = f"Dispatched '{cmd}' to device ({dev_id}). Action is executing."
                 return {
+                    "command_id": req_id,
+                    "status": "executing",
+                    "intent": primary_intent,
+                    "device_id": dev_id,
+                    "result": ack_msg,
+                    "timestamp": ts_now,
                     "success": True,
                     "command": cmd,
-                    "response": f"Dispatched '{cmd}' to Windows workstation ({dev_id}). Action is executing.",
+                    "response": ack_msg,
                     "routed_to": dev_id,
-                    "device_id": dev_id,
                     "error": None,
                 }
         except Exception as e:
             device_manager.pending_requests.pop(req_id, None)
             logger.error(f"Error dispatching to device '{dev_id}': {e}")
+            err_msg = f"Failed to dispatch to device: {str(e)}"
             return {
+                "command_id": req_id,
+                "status": "failed",
+                "intent": primary_intent,
+                "device_id": dev_id,
+                "result": err_msg,
+                "timestamp": ts_now,
                 "success": False,
                 "command": cmd,
-                "response": f"Failed to dispatch to Windows Agent: {e}",
+                "response": err_msg,
                 "routed_to": dev_id,
-                "device_id": dev_id,
                 "error": {
                     "code": "DISPATCH_FAILED",
                     "layer": "CLOUD",
-                    "message": f"Failed to communicate with Windows Agent: {str(e)}",
+                    "message": err_msg,
                     "details": "WebSocket connection failure during dispatch.",
                 },
             }
 
-    # Otherwise execute cloud-available tools directly via registry
+    # 4. Otherwise execute cloud-available tools directly via registry
     responses = []
     has_error = False
     cloud_error = None
     logger.info(f"COMMAND ROUTING: route=cloud cmd='{cmd}'")
 
-    for step in plan.steps:
+    for step, decision in cloud_steps:
         t_name = step.tool_name
         args = step.args
         tool = registry.get(t_name)
@@ -359,11 +399,16 @@ async def execute_command(payload: CommandPayload):
 
     final_text = "\n\n".join(responses) if responses else "Command completed."
     return {
+        "command_id": req_id,
+        "status": "success" if not has_error else "failed",
+        "intent": primary_intent,
+        "device_id": None,
+        "result": final_text,
+        "timestamp": ts_now,
         "success": not has_error,
         "command": cmd,
         "response": final_text,
         "routed_to": "cloud",
-        "device_id": None,
         "error": cloud_error,
     }
 
@@ -460,10 +505,22 @@ async def ws_device_endpoint(websocket: WebSocket, device_id: str):
             msg_type = data.get("type")
             if msg_type == "handshake":
                 device_name = data.get("device_name", "Windows PC")
-                platform = data.get("platform", "Windows")
+                platform = data.get("platform", "windows")
+                os_ver = data.get("os_version", "Windows 11")
+                agent_ver = data.get("agent_version", "2.0.0")
+                caps = data.get("capabilities")
                 token = data.get("token", "")
-                device_manager.register_device_socket(device_id, websocket, name=device_name, platform=platform, token=token)
-                logger.info(f"Handshake completed for device '{device_id}' ({device_name})")
+                device_manager.register_device_socket(
+                    device_id,
+                    websocket,
+                    name=device_name,
+                    platform=platform,
+                    os_version=os_ver,
+                    agent_version=agent_ver,
+                    capabilities=caps,
+                    token=token,
+                )
+                logger.info(f"Handshake completed for device '{device_id}' ({device_name} - {platform}) with caps: {caps}")
             elif msg_type == "heartbeat":
                 telemetry = data.get("telemetry", {})
                 device_manager.update_heartbeat(device_id, telemetry)

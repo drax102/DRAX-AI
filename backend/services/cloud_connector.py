@@ -120,12 +120,15 @@ class CloudConnector:
             self._backoff_delay = 1.0
             logger.info(f"[ONLINE] Workstation successfully connected to DRAX Cloud ({self.device_id})")
 
-            # Send online handshake
+            # Send universal device handshake with advertised capabilities
             handshake_payload = {
                 "type": "handshake",
                 "device_id": self.device_id,
                 "device_name": self.device_name,
-                "platform": "Windows",
+                "platform": "windows",
+                "os_version": "Windows 11",
+                "agent_version": "2.0.0",
+                "capabilities": ["apps", "browser", "media", "volume", "screen", "files", "system", "notifications", "telemetry"],
                 "token": self.token,
                 "status": "online",
             }

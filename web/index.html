@@ -38,7 +38,7 @@
           <h1 id="page-title">Command Terminal</h1>
         </div>
         <div class="topbar-actions">
-          <button id="pair-modal-btn" class="glow-btn"><i class="fa-solid fa-link"></i> Pair PC</button>
+          <button id="pair-modal-btn" class="glow-btn"><i class="fa-solid fa-link"></i> Connect Device</button>
           <button id="quick-brief-btn" class="glow-btn"><i class="fa-solid fa-sun"></i> Daily Brief</button>
           <button id="settings-btn" class="icon-btn" title="API Settings"><i class="fa-solid fa-gear"></i></button>
           <div class="clock-display" id="clock">--:--:--</div>
@@ -66,11 +66,11 @@
           </div>
 
           <div class="chat-terminal" id="chat-messages">
-            <div class="msg system"><i class="fa-solid fa-microchip"></i> DRAX AI v2.0 Agentic Brain Online. Ready for voice & text control.</div>
+            <div class="msg system"><i class="fa-solid fa-microchip"></i> DRAX AI v2.0 Universal Assistant Online. Ready for cross-device control & cloud intelligence.</div>
           </div>
           
           <div class="chat-input-bar">
-            <input type="text" id="command-input" placeholder="Say 'Hey Drax' or type an instruction (e.g. 'Open Spotify', 'Nvidia stock', 'AI news')...">
+            <input type="text" id="command-input" placeholder="Say 'Hey Drax' or type an instruction (e.g. 'Play Believer on Spotify', 'Next song', 'Nvidia stock', 'AI news')...">
             <button id="voice-btn" class="icon-btn" title="Voice Input"><i class="fa-solid fa-microphone"></i></button>
             <button id="send-btn" class="glow-btn">Execute</button>
           </div>
@@ -80,8 +80,8 @@
       <!-- TAB 2: Connected Devices -->
       <section id="tab-devices" class="tab-pane">
         <div class="panel-header">
-          <h2>Connected Workstations</h2>
-          <button id="open-pair-btn" class="glow-btn"><i class="fa-solid fa-plus"></i> Pair New Windows PC</button>
+          <h2>My Devices</h2>
+          <button id="open-pair-btn" class="glow-btn"><i class="fa-solid fa-plus"></i> Connect New Device</button>
         </div>
         <div class="cards-grid" id="devices-grid">
           <div class="card device-card">
@@ -196,14 +196,14 @@
     </main>
   </div>
 
-  <!-- Device Pairing Modal -->
+  <!-- Connect Device Modal -->
   <div class="modal-overlay" id="pair-modal">
     <div class="modal-content">
-      <h2><i class="fa-solid fa-link"></i> PAIR YOUR WINDOWS PC</h2>
+      <h2><i class="fa-solid fa-link"></i> CONNECT A DEVICE</h2>
       <div style="text-align: left; background: #0d1117; border: 1px solid #1f2937; border-radius: 6px; padding: 14px; margin: 15px 0; font-size: 0.95rem; line-height: 1.6; color: #8b949e;">
-        <p><strong style="color: #00f3ff;">1.</strong> Start <strong>Drax AI</strong> on your Windows PC.</p>
-        <p><strong style="color: #00f3ff;">2.</strong> Look at your System Tray (right-click Drax icon &rarr; <em>Show Device Pairing Code</em>).</p>
-        <p><strong style="color: #00f3ff;">3.</strong> Enter the pairing code below and connect:</p>
+        <p><strong style="color: #00f3ff;">1.</strong> Start <strong>Drax AI</strong> on your Windows PC, Android device, or workstation.</p>
+        <p><strong style="color: #00f3ff;">2.</strong> Retrieve your temporary pairing code (e.g. <em>DRAX-7K92</em>).</p>
+        <p><strong style="color: #00f3ff;">3.</strong> Enter the pairing code below to link capabilities:</p>
       </div>
       <input type="text" id="pairing-code-input" placeholder="DRAX-XXXX" maxlength="12" style="text-transform: uppercase; font-size: 1.3rem; text-align: center; letter-spacing: 4px; font-weight: bold; color: #00ff88; margin-bottom: 15px;">
       <div class="modal-buttons">

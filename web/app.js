@@ -439,6 +439,17 @@ async function initDevices() {
   loadDevices();
 }
 
+window.setPrimaryDevice = async function(deviceId) {
+  try {
+    const resp = await fetch(`${API_BASE}/api/devices/${deviceId}/primary`, { method: 'POST' });
+    if (resp.ok) {
+      loadDevices();
+    }
+  } catch (err) {
+    console.error('[DRAX API] Failed to set primary device:', err);
+  }
+};
+
 async function loadDevices() {
   const container = document.getElementById('devices-grid');
   if (!container) return;
@@ -452,8 +463,8 @@ async function loadDevices() {
     if (devices.length === 0) {
       container.innerHTML = `
         <div class="empty-state" style="grid-column: 1 / -1; padding: 30px; text-align: center;">
-          <p style="color: var(--text-muted); font-size: 1.05rem; margin-bottom: 12px;">No paired Windows Agent is currently registered.</p>
-          <button class="glow-btn" onclick="document.getElementById('pair-modal-btn').click()"><i class="fa-solid fa-plus"></i> Pair Your Windows PC</button>
+          <p style="color: var(--text-muted); font-size: 1.05rem; margin-bottom: 12px;">No connected devices currently registered.</p>
+          <button class="glow-btn" onclick="document.getElementById('pair-modal-btn').click()"><i class="fa-solid fa-plus"></i> Connect A Device</button>
         </div>
       `;
       return;
@@ -467,23 +478,44 @@ async function loadDevices() {
       const lastSeenSecs = Math.max(0, Math.floor(now - (d.last_seen || 0)));
       const lastSeenStr = lastSeenSecs < 10 ? 'Just now' : lastSeenSecs < 60 ? `${lastSeenSecs}s ago` : `${Math.floor(lastSeenSecs / 60)}m ago`;
 
+      const plat = (d.platform || 'windows').toLowerCase();
+      const platIcon = plat === 'android' ? 'fa-brands fa-android' :
+                       plat === 'macos' || plat === 'ios' ? 'fa-brands fa-apple' :
+                       plat === 'linux' ? 'fa-brands fa-linux' :
+                       plat === 'web' ? 'fa-solid fa-globe' : 'fa-brands fa-windows';
+
+      const caps = Array.isArray(d.capabilities) ? d.capabilities : ['apps', 'media', 'system'];
+      const capPillsHtml = caps.map(c => `<span class="cap-pill">${escapeHtml(c)}</span>`).join('');
+
+      const isPrimary = d.is_primary === true;
+      const primaryBadgeHtml = isPrimary
+        ? `<span class="primary-badge"><i class="fa-solid fa-star"></i> Primary</span>`
+        : `<button class="set-primary-btn" onclick="setPrimaryDevice('${d.device_id}')">Set Primary</button>`;
+
       return `
-        <div class="card device-card">
+        <div class="card device-card ${isPrimary ? 'primary-device-card' : ''}">
           <div class="device-header">
-            <i class="fa-brands fa-windows device-icon" style="color: ${statusColor};"></i>
-            <div>
-              <h3>${escapeHtml(d.name || 'Windows PC')}</h3>
+            <i class="${platIcon} device-icon" style="color: ${statusColor};"></i>
+            <div style="flex: 1;">
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <h3>${escapeHtml(d.name || 'Device')}</h3>
+                ${primaryBadgeHtml}
+              </div>
               <p style="color: ${statusColor}; margin-top: 4px;">
                 <span class="status-indicator" style="background: ${statusColor};"></span>
-                ${statusText} &bull; <small style="color: var(--text-muted);">${lastSeenStr}</small>
+                ${statusText} &bull; <small style="color: var(--text-muted);">${d.os_version || 'v2.0'} &bull; ${lastSeenStr}</small>
               </p>
             </div>
           </div>
+          <div class="device-capabilities">
+            <small style="color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 6px;">Advertised Capabilities</small>
+            <div class="caps-container">${capPillsHtml}</div>
+          </div>
           <div class="device-actions">
-            <button class="device-cmd-btn" onclick="executeFromDevice('open spotify', '${d.device_id}')">Open Spotify</button>
+            <button class="device-cmd-btn" onclick="executeFromDevice('open spotify', '${d.device_id}')">Play Music</button>
+            <button class="device-cmd-btn" onclick="executeFromDevice('next song', '${d.device_id}')">Next Song</button>
             <button class="device-cmd-btn" onclick="executeFromDevice('open chrome', '${d.device_id}')">Open Chrome</button>
-            <button class="device-cmd-btn" onclick="executeFromDevice('lock pc', '${d.device_id}')">Lock PC</button>
-            <button class="device-cmd-btn" onclick="executeFromDevice('take screenshot', '${d.device_id}')">Screenshot</button>
+            <button class="device-cmd-btn" onclick="executeFromDevice('lock pc', '${d.device_id}')">Lock Screen</button>
           </div>
         </div>
       `;
