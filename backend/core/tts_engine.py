@@ -1,35 +1,40 @@
 """
-tts_engine.py — Thread-safe TTS engine using pyttsx3.
+tts_engine.py — Thread-safe TTS engine using pyttsx3 and pure Python signals.
 """
 
-import pyttsx3
 import queue
 import threading
 import time
-from PyQt5.QtCore import QObject, pyqtSignal
 
+from backend.core.assistant import Signal
 from backend.core.config import settings
 from backend.core.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Optional pyttsx3 import
+try:
+    import pyttsx3
+    HAS_PYTTSX3 = True
+except Exception:
+    HAS_PYTTSX3 = False
 
-class DraxVoiceEngine(QObject):
+
+class DraxVoiceEngine:
     """
     Thread-safe, non-blocking voice synthesis engine for DRAX AI.
     Runs speech synthesis in a dedicated background daemon thread to avoid GUI blocking.
     """
-    speech_started = pyqtSignal(str)
-    speech_finished = pyqtSignal()
 
     def __init__(self, rate=None, volume=None):
-        super().__init__()
+        self.speech_started = Signal()
+        self.speech_finished = Signal()
         self.queue = queue.Queue()
         self.rate = rate if rate is not None else settings.get("tts", "rate", 185)
         self.volume = volume if volume is not None else settings.get("tts", "volume", 1.0)
         self._is_speaking = False
         self._stop_event = threading.Event()
-        
+
         # Start worker thread
         self.thread = threading.Thread(target=self._worker_loop, daemon=True)
         self.thread.start()
@@ -54,22 +59,22 @@ class DraxVoiceEngine(QObject):
                 break
 
     def _worker_loop(self):
-        # Initialize pyttsx3 inside worker thread context
-        try:
-            engine = pyttsx3.init()
-            engine.setProperty('rate', self.rate)
-            engine.setProperty('volume', self.volume)
-            
-            # Select male/female voice if available
-            voices = engine.getProperty('voices')
-            if voices:
-                for voice in voices:
-                    if "david" in voice.name.lower() or "zira" in voice.name.lower():
-                        engine.setProperty('voice', voice.id)
-                        break
-        except Exception as e:
-            logger.warning(f"Voice engine init warning: {e}")
-            engine = None
+        engine = None
+        if HAS_PYTTSX3:
+            try:
+                engine = pyttsx3.init()
+                engine.setProperty("rate", self.rate)
+                engine.setProperty("volume", self.volume)
+
+                voices = engine.getProperty("voices")
+                if voices:
+                    for voice in voices:
+                        if "david" in voice.name.lower() or "zira" in voice.name.lower():
+                            engine.setProperty("voice", voice.id)
+                            break
+            except Exception as e:
+                logger.warning(f"Voice engine init warning: {e}")
+                engine = None
 
         while not self._stop_event.is_set():
             try:
@@ -87,8 +92,8 @@ class DraxVoiceEngine(QObject):
                 except Exception as e:
                     logger.error(f"Speech error: {e}")
             else:
-                # Fallback delay if pyttsx3 failed
-                time.sleep(len(text) * 0.05)
+                # Silent mode or cloud fallback delay
+                time.sleep(min(len(text) * 0.03, 1.0))
 
             self._is_speaking = False
             self.speech_finished.emit()

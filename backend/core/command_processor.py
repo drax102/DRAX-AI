@@ -1,24 +1,24 @@
 """
 command_processor.py — Unified text & voice command processor connecting to the Agent Core.
+Pure Python background worker thread without PyQt5 dependencies.
 """
 
-from PyQt5.QtCore import QThread, pyqtSignal
+import threading
 
 from backend.agent.agent import process_user_request
-from backend.core.assistant import AssistantState, assistant
+from backend.core.assistant import AssistantState, assistant, Signal
 from backend.core.logger import get_logger
 
 logger = get_logger(__name__)
 
 
-class CommandProcessorWorker(QThread):
-    """Worker thread to execute agent processing off the main GUI thread."""
-
-    command_completed = pyqtSignal(str, str)  # (command, response)
+class CommandProcessorWorker(threading.Thread):
+    """Worker thread to execute agent processing off the main thread."""
 
     def __init__(self, command_text: str):
-        super().__init__()
+        super().__init__(daemon=True)
         self.command_text = command_text
+        self.command_completed = Signal()  # (command, response)
 
     def run(self):
         logger.info(f"Processing command via Agent: '{self.command_text}'")
