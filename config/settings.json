@@ -1,0 +1,58 @@
+{
+  "assistant": {
+    "name": "Drax",
+    "wake_word": "hey drax",
+    "wake_word_aliases": [
+      "hey drax",
+      "drax",
+      "he drags",
+      "the drags",
+      "hey dracs",
+      "hey tracks",
+      "hey dax",
+      "hey cracks",
+      "he attacks",
+      "dracs",
+      "tracks"
+    ],
+    "wake_confidence_threshold": 0.60,
+    "wake_min_token_match": 1,
+    "cooldown_seconds": 1.5,
+    "confirm_dangerous_commands": true
+  },
+  "speech": {
+    "engine": "google",
+    "vosk_model": "vosk-model-small-en-us-0.15",
+    "sample_rate": 16000,
+    "microphone": "auto",
+    "listen_timeout": 7,
+    "phrase_time_limit": 8
+  },
+  "tts": {
+    "enabled": true,
+    "rate": 185,
+    "volume": 1.0
+  },
+  "ui": {
+    "theme": "dark",
+    "accent": "cyan",
+    "hide_to_tray_on_start": true,
+    "show_notifications": true
+  },
+  "startup": {
+    "start_with_windows": false,
+    "rebuild_index_on_start": false
+  },
+  "app_indexer": {
+    "scan_start_menu": true,
+    "scan_registry": true,
+    "scan_uwp": true,
+    "cache_file": "backend/data/app_index.json",
+    "manual_overrides": "backend/data/manual_apps.json"
+  },
+  "logging": {
+    "level": "INFO",
+    "log_file": "logs/drax.log",
+    "console": true
+  }
+}

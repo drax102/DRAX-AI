@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DRAX AI — Cybernetic Cloud Assistant</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="logo">
+        <div class="pulse-orb"></div>
+        <h2>DRAX <span>AI</span></h2>
+      </div>
+      <nav class="nav-links">
+        <button class="nav-btn active" data-tab="chat"><i class="fa-solid fa-terminal"></i> Command Terminal</button>
+        <button class="nav-btn" data-tab="devices"><i class="fa-solid fa-laptop-code"></i> My Devices</button>
+        <button class="nav-btn" data-tab="tasks"><i class="fa-solid fa-list-check"></i> Tasks & Agenda</button>
+        <button class="nav-btn" data-tab="reminders"><i class="fa-solid fa-clock"></i> Reminders & Alarms</button>
+        <button class="nav-btn" data-tab="finance"><i class="fa-solid fa-chart-line"></i> Stocks & Markets</button>
+        <button class="nav-btn" data-tab="news"><i class="fa-solid fa-newspaper"></i> Live News</button>
+        <button class="nav-btn" data-tab="system"><i class="fa-solid fa-desktop"></i> PC Telemetry</button>
+      </nav>
+      <div class="agent-status-badge" id="cloud-badge">
+        <span class="status-indicator" id="status-indicator"></span>
+        <span id="agent-state-label">DRAX ONLINE</span>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <!-- Top Navbar -->
+      <header class="topbar">
+        <div class="topbar-title">
+          <h1 id="page-title">Command Terminal</h1>
+        </div>
+        <div class="topbar-actions">
+          <button id="pair-modal-btn" class="glow-btn"><i class="fa-solid fa-link"></i> Pair PC</button>
+          <button id="quick-brief-btn" class="glow-btn"><i class="fa-solid fa-sun"></i> Daily Brief</button>
+          <button id="settings-btn" class="icon-btn" title="API Settings"><i class="fa-solid fa-gear"></i></button>
+          <div class="clock-display" id="clock">--:--:--</div>
+        </div>
+      </header>
+
+      <!-- TAB 1: Chat & Voice Command Terminal -->
+      <section id="tab-chat" class="tab-pane active">
+        <div class="chat-wrapper">
+          <div class="avatar-hud">
+            <div class="hud-circle">
+              <div class="hud-core"></div>
+              <div class="hud-ring r1"></div>
+              <div class="hud-ring r2"></div>
+            </div>
+            <div class="hud-label">HOLOGRAPHIC CORE ACTIVE</div>
+          </div>
+          
+          <div class="quick-chips">
+            <button class="chip" data-cmd="What is Nvidia stock price?">📈 Nvidia Stock</button>
+            <button class="chip" data-cmd="What is the weather in Delhi?">🌤️ Delhi Weather</button>
+            <button class="chip" data-cmd="What is the latest AI news?">📰 AI News</button>
+            <button class="chip" data-cmd="Open Spotify and play music">🎵 Open Spotify</button>
+            <button class="chip" data-cmd="Open Chrome">🌐 Open Chrome</button>
+          </div>
+
+          <div class="chat-terminal" id="chat-messages">
+            <div class="msg system"><i class="fa-solid fa-microchip"></i> DRAX AI v2.0 Agentic Brain Online. Ready for voice & text control.</div>
+          </div>
+          
+          <div class="chat-input-bar">
+            <input type="text" id="command-input" placeholder="Say 'Hey Drax' or type an instruction (e.g. 'Open Spotify', 'Nvidia stock', 'AI news')...">
+            <button id="voice-btn" class="icon-btn" title="Voice Input"><i class="fa-solid fa-microphone"></i></button>
+            <button id="send-btn" class="glow-btn">Execute</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 2: Connected Devices -->
+      <section id="tab-devices" class="tab-pane">
+        <div class="panel-header">
+          <h2>Connected Workstations</h2>
+          <button id="open-pair-btn" class="glow-btn"><i class="fa-solid fa-plus"></i> Pair New Windows PC</button>
+        </div>
+        <div class="cards-grid" id="devices-grid">
+          <div class="card device-card">
+            <div class="device-header">
+              <i class="fa-brands fa-windows device-icon"></i>
+              <div>
+                <h3>My Windows Workstation</h3>
+                <p class="status-online"><span class="status-indicator"></span> Online & Listening</p>
+              </div>
+            </div>
+            <div class="device-actions">
+              <button class="device-cmd-btn" data-cmd="open chrome">Open Chrome</button>
+              <button class="device-cmd-btn" data-cmd="open spotify">Open Spotify</button>
+              <button class="device-cmd-btn" data-cmd="lock pc">Lock Workstation</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 3: Tasks & Agenda -->
+      <section id="tab-tasks" class="tab-pane">
+        <div class="panel-header">
+          <h2>Task Management</h2>
+          <div class="add-box">
+            <input type="text" id="new-task-input" placeholder="Add new task title...">
+            <button id="add-task-btn" class="glow-btn">Add Task</button>
+          </div>
+        </div>
+        <div class="cards-grid" id="tasks-list">
+          <div class="empty-state">Loading tasks...</div>
+        </div>
+      </section>
+
+      <!-- TAB 4: Reminders & Alarms -->
+      <section id="tab-reminders" class="tab-pane">
+        <div class="split-view">
+          <div class="panel">
+            <h2>Active Reminders</h2>
+            <div class="cards-grid" id="reminders-list">
+              <div class="empty-state">No pending reminders.</div>
+            </div>
+          </div>
+          <div class="panel">
+            <h2>Scheduled Alarms</h2>
+            <div class="cards-grid" id="alarms-list">
+              <div class="empty-state">No active alarms.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 5: Stocks & Markets -->
+      <section id="tab-finance" class="tab-pane">
+        <div class="panel-header">
+          <h2>Real-Time Financial Markets</h2>
+          <div class="add-box">
+            <input type="text" id="stock-search-input" placeholder="Search ticker (e.g. NVDA, AAPL, RELIANCE, NIFTY)...">
+            <button id="stock-search-btn" class="glow-btn">Quote</button>
+          </div>
+        </div>
+        <div class="cards-grid" id="watchlist-grid">
+          <!-- Live tickers injected here -->
+        </div>
+      </section>
+
+      <!-- TAB 6: Live News & Weather -->
+      <section id="tab-news" class="tab-pane">
+        <div class="news-controls">
+          <button class="filter-btn active" data-topic="world">World</button>
+          <button class="filter-btn" data-topic="india">India</button>
+          <button class="filter-btn" data-topic="ai">AI & Tech</button>
+          <button class="filter-btn" data-topic="business">Finance & Markets</button>
+        </div>
+        <div class="cards-grid" id="news-grid">
+          <div class="empty-state">Fetching verified news...</div>
+        </div>
+      </section>
+
+      <!-- TAB 7: Connected Workstation Telemetry -->
+      <section id="tab-system" class="tab-pane">
+        <div class="telemetry-dashboard">
+          <div class="metric-card">
+            <div class="metric-icon"><i class="fa-solid fa-microchip"></i></div>
+            <div class="metric-info">
+              <h3>CPU Utilization</h3>
+              <p id="cpu-stat">-- %</p>
+            </div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-icon"><i class="fa-solid fa-memory"></i></div>
+            <div class="metric-info">
+              <h3>Memory (RAM)</h3>
+              <p id="ram-stat">-- %</p>
+            </div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-icon"><i class="fa-brands fa-windows"></i></div>
+            <div class="metric-info">
+              <h3>Host Workstation</h3>
+              <p id="os-stat">Windows 11</p>
+            </div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-icon"><i class="fa-solid fa-shield-halved"></i></div>
+            <div class="metric-info">
+              <h3>Agent Core State</h3>
+              <p id="state-stat">IDLE</p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Device Pairing Modal -->
+  <div class="modal-overlay" id="pair-modal">
+    <div class="modal-content">
+      <h2><i class="fa-solid fa-link"></i> Connect Windows Workstation</h2>
+      <p style="color: var(--text-muted); margin: 10px 0 20px;">
+        Open the Drax AI application on your Windows PC and check your System Tray or Settings for your <strong>Pairing Code</strong>.
+      </p>
+      <input type="text" id="pairing-code-input" placeholder="e.g. DRAX-7K92" style="text-transform: uppercase; font-size: 1.2rem; text-align: center; letter-spacing: 3px;">
+      <div class="modal-buttons">
+        <button id="cancel-pair-btn" class="icon-btn">Cancel</button>
+        <button id="submit-pair-btn" class="glow-btn">Connect Device</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- API Settings Modal -->
+  <div class="modal-overlay" id="settings-modal">
+    <div class="modal-content">
+      <h2><i class="fa-solid fa-gear"></i> Cloud API Configuration</h2>
+      <p style="color: var(--text-muted); margin: 10px 0 20px;">
+        Set your production backend endpoint (Render / local):
+      </p>
+      <input type="text" id="api-url-input" placeholder="https://drax-cloud.onrender.com or http://127.0.0.1:8765">
+      <div class="modal-buttons">
+        <button id="cancel-settings-btn" class="icon-btn">Cancel</button>
+        <button id="save-settings-btn" class="glow-btn">Save Endpoint</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

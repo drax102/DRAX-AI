@@ -1,31 +1,29 @@
-import queue
-import sounddevice as sd
-import json
-from vosk import Model, KaldiRecognizer
+import speech_recognition as sr
 
-MODEL_PATH = "models/vosk-model-small-en-us-0.15"
-q = queue.Queue()
+def listen_for_command_speech(timeout=6, phrase_limit=8) -> str:
+    """
+    Captures voice input from the microphone using Google Speech Recognition.
+    Returns recognized text in lowercase or empty string if unheard.
+    """
+    recognizer = sr.Recognizer()
+    recognizer.dynamic_energy_threshold = True
+    recognizer.pause_threshold = 0.8
 
-def audio_callback(indata, frames, time, status):
-    q.put(bytes(indata))
-
-def listen_for_command():
-    model = Model(MODEL_PATH)
-    recognizer = KaldiRecognizer(model, 16000)
-    recognizer.SetWords(True)
-
-    with sd.RawInputStream(
-        samplerate=16000,
-        blocksize=8000,
-        dtype="int16",
-        channels=1,
-        device=1,
-        callback=audio_callback,
-    ):
-        while True:
-            data = q.get()
-            if recognizer.AcceptWaveform(data) and len(data) > 4000:
-                result = json.loads(recognizer.Result())
-                text = result.get("text", "").lower()
-                print("Command heard:", text)
-                return text
+    try:
+        with sr.Microphone() as source:
+            recognizer.adjust_for_ambient_noise(source, duration=0.6)
+            print("🎤 DRAX Listening...")
+            audio = recognizer.listen(source, timeout=timeout, phrase_time_limit=phrase_limit)
+        
+        text = recognizer.recognize_google(audio).lower().strip()
+        print(f"🗣️ Heard: {text}")
+        return text
+    except sr.WaitTimeoutError:
+        print("⏱️ Listening timed out.")
+        return ""
+    except sr.UnknownValueError:
+        print("❓ Speech unrecognized.")
+        return ""
+    except Exception as e:
+        print(f"⚠️ Speech listener error: {e}")
+        return ""

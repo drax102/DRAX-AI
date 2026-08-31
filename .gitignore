@@ -1,0 +1,54 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyd
+
+# Virtual environments
+venv/
+env/
+.env
+.venv/
+
+# PyInstaller build artifacts
+build/
+dist/
+*.toc
+*.pkg
+*.pyz
+base_library.zip
+localpycs/
+warn-*.txt
+xref-*.html
+
+# Logs & Screenshots
+logs/*.log
+logs/*.log.*
+logs/screenshots/*
+
+# SQLite Data (machine-specific database generated at runtime)
+data/*.db
+
+# App index (machine-specific paths generated at runtime)
+backend/data/app_index.json
+
+# IDE / editor
+.idea/
+.vscode/
+*.code-workspace
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Python eggs & test cache
+*.egg-info/
+.eggs/
+.pytest_cache/
+.coverage
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
