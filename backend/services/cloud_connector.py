@@ -120,9 +120,9 @@ class CloudConnector:
             self._backoff_delay = 1.0
             logger.info(f"[ONLINE] Workstation successfully connected to DRAX Cloud ({self.device_id})")
 
-            # Send universal device handshake with advertised capabilities
-            handshake_payload = {
-                "type": "handshake",
+            # Send device registration message with advertised capabilities
+            registration_payload = {
+                "type": "register",
                 "device_id": self.device_id,
                 "device_name": self.device_name,
                 "platform": "windows",
@@ -132,7 +132,7 @@ class CloudConnector:
                 "token": self.token,
                 "status": "online",
             }
-            ws.send(json.dumps(handshake_payload))
+            ws.send(json.dumps(registration_payload))
             self._send_heartbeat(ws)
 
             last_hb = time.time()
@@ -158,8 +158,10 @@ class CloudConnector:
                     payload = json.loads(msg_raw)
                     msg_type = payload.get("type")
 
-                    if msg_type == "execute_command":
+                    if msg_type in ["execute_command", "command"]:
                         self._handle_execute_command(ws, payload)
+                    elif msg_type == "device_registered":
+                        logger.info(f"Cloud acknowledged registration for device '{self.device_id}' (status: {payload.get('status')})")
                     elif msg_type == "ping":
                         ws.send(json.dumps({"type": "pong", "device_id": self.device_id}))
                 except Exception as ex:
@@ -176,10 +178,11 @@ class CloudConnector:
             telemetry = {"os_name": "Windows", "cpu_percent": 0, "ram_percent": 0}
 
         try:
+            from datetime import datetime, timezone
             ws.send(json.dumps({
                 "type": "heartbeat",
                 "device_id": self.device_id,
-                "timestamp": time.time(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "telemetry": telemetry,
             }))
             self.last_heartbeat_time = time.time()
@@ -188,19 +191,26 @@ class CloudConnector:
 
     def _handle_execute_command(self, ws, payload: dict):
         """Execute cloud-dispatched instruction on local Windows workstation."""
-        req_id = payload.get("request_id") or payload.get("command_id")
+        from datetime import datetime, timezone
+        req_id = payload.get("command_id") or payload.get("request_id")
         steps = payload.get("steps", [])
+        action = payload.get("action")
+        action_payload = payload.get("payload", {})
         command_text = payload.get("command", "")
         results = []
         success = True
 
-        logger.info(f"Received remote execution dispatch [{req_id}]: '{command_text}' ({len(steps)} steps)")
+        # If direct single action dispatch: convert to step
+        if action and not steps:
+            steps = [{"tool": action, "args": action_payload}]
+
+        logger.info(f"Received remote execution dispatch [{req_id}]: '{command_text or action}' ({len(steps)} steps)")
 
         for s in steps:
             tool_name = s.get("tool")
             tool_args = s.get("args", {})
 
-            # Strict Security Allowlist: Check registered tool
+            # Security Allowlist: Check registered tool
             tool = registry.get(tool_name)
             if not tool:
                 msg = f"Rejected unrecognized or unauthorized tool: '{tool_name}'"
@@ -220,17 +230,21 @@ class CloudConnector:
                 results.append(err_msg)
                 success = False
 
-        combined_result = "\n\n".join(results) if results else f"Executed '{command_text}' on workstation."
+        combined_result = "\n\n".join(results) if results else f"Executed '{command_text or action}' on workstation."
 
         # Send execution response back to Cloud
         try:
             ws.send(json.dumps({
                 "type": "command_result",
-                "request_id": req_id,
                 "command_id": req_id,
+                "request_id": req_id,
+                "device_id": self.device_id,
+                "status": "success" if success else "failed",
                 "success": success,
                 "result": combined_result,
                 "response": combined_result,
+                "error": None if success else combined_result,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }))
             logger.info(f"Dispatched execution result for [{req_id}] back to Cloud.")
         except Exception as e:

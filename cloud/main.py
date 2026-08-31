@@ -25,6 +25,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from cloud.devices import device_manager
+from backend.devices.registry import device_registry
+from backend.devices.router import find_device_for_capability
 from backend.agent.capability_router import capability_router
 from backend.agent.planner import plan_request
 from backend.agent.tool_registry import registry
@@ -101,6 +103,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 class CommandPayload(BaseModel):
     command: str
     device_id: Optional[str] = None
+    command_id: Optional[str] = None
 
 
 import uuid
@@ -189,11 +192,23 @@ def connect_paired_device(req: PairConnectRequest):
     return {"status": "success", "device": device}
 
 
+@app.get("/devices")
 @app.get("/api/devices")
 def list_devices():
     return {"devices": device_manager.get_devices()}
 
 
+@app.get("/devices/{device_id}")
+@app.get("/api/devices/{device_id}")
+def get_device_endpoint(device_id: str):
+    devices = device_manager.get_devices()
+    for d in devices:
+        if d["device_id"] == device_id:
+            return d
+    raise HTTPException(status_code=404, detail="Device not found.")
+
+
+@app.post("/devices/{device_id}/primary")
 @app.post("/api/devices/{device_id}/primary")
 def set_primary_device_endpoint(device_id: str):
     """Set specified device as primary device."""
@@ -211,17 +226,45 @@ async def execute_command(payload: CommandPayload):
     Universal multi-device command router.
     Routes intents based on required capabilities to matching online devices (Windows, Android, etc.)
     or executes cloud intelligence skills server-side.
+    Provides command tracking and idempotency.
     """
     cmd = payload.command.strip()
     if not cmd:
         raise HTTPException(status_code=400, detail="Command cannot be empty.")
 
-    req_id = f"cmd_{int(time.time() * 1000)}_{uuid.uuid4().hex[:4]}"
+    req_id = payload.command_id or f"cmd_{int(time.time() * 1000)}_{uuid.uuid4().hex[:6]}"
     ts_now = datetime.now(timezone.utc).isoformat()
+
+    # 0. Idempotency Check: Return existing result if command_id was already executed
+    existing_cmd = device_registry.get_command(req_id)
+    if existing_cmd and existing_cmd.status in ["success", "executing"]:
+        logger.info(f"IDEMPOTENCY: Returning existing state for duplicate command_id='{req_id}'")
+        return {
+            "command_id": req_id,
+            "status": existing_cmd.status,
+            "intent": existing_cmd.intent,
+            "device_id": existing_cmd.device_id,
+            "result": existing_cmd.result,
+            "timestamp": existing_cmd.updated_at or ts_now,
+            "success": existing_cmd.status == "success",
+            "command": existing_cmd.command or cmd,
+            "response": existing_cmd.result,
+            "routed_to": existing_cmd.device_id,
+            "error": existing_cmd.error,
+        }
 
     # 1. Plan the request into ActionSteps
     plan = plan_request(cmd)
     primary_intent = plan.steps[0].tool_name if plan.steps else "unknown"
+
+    # Record initial command state
+    device_registry.record_command(
+        command_id=req_id,
+        command=cmd,
+        intent=primary_intent,
+        device_id=payload.device_id,
+        status="queued",
+    )
 
     # 2. Check if any step requires device capabilities
     device_steps = []
@@ -244,6 +287,7 @@ async def execute_command(payload: CommandPayload):
             if first_step.tool_name in ["search_web", "open_url"]:
                 q = first_step.args.get("query", first_step.args.get("url", cmd))
                 res_url = f"Web search for '{q}': https://www.google.com/search?q={urllib.parse.quote(q)}"
+                device_registry.update_command_status(req_id, status="success", result=res_url)
                 return {
                     "command_id": req_id,
                     "status": "success",
@@ -261,6 +305,7 @@ async def execute_command(payload: CommandPayload):
             unsupported_msg = first_decision.unsupported_message or "No connected device is currently available for this action."
             err_code = "AGENT_OFFLINE" if first_decision.required_capability in ["apps", "media", "system", "volume", "screen", "files", "browser", "telemetry"] else "CAPABILITY_UNAVAILABLE"
             err_layer = "WINDOWS AGENT" if err_code == "AGENT_OFFLINE" else "DEVICE_ROUTER"
+            device_registry.update_command_status(req_id, status="failed", result=unsupported_msg, error=unsupported_msg)
             return {
                 "command_id": req_id,
                 "status": "failed",
@@ -283,13 +328,17 @@ async def execute_command(payload: CommandPayload):
         dev_id = first_decision.device_id
         ws = first_decision.websocket
         fut = device_manager.create_pending_request(req_id)
+        device_registry.update_command_status(req_id, status="executing")
         logger.info(f"CAPABILITY ROUTING: command_id={req_id} cap={first_decision.required_capability} target={dev_id} cmd='{cmd}'")
 
         try:
             await ws.send_json({
-                "type": "execute_command",
-                "request_id": req_id,
+                "type": "command",
                 "command_id": req_id,
+                "request_id": req_id,
+                "intent": primary_intent,
+                "action": first_step.tool_name,
+                "payload": first_step.args,
                 "command": cmd,
                 "steps": [{"tool": s.tool_name, "args": s.args} for s in plan.steps],
             })
@@ -299,6 +348,13 @@ async def execute_command(payload: CommandPayload):
                 agent_result = res_obj.get("result") or res_obj.get("response", f"Executed '{cmd}' on device.")
                 agent_success = res_obj.get("success", True)
                 agent_error = res_obj.get("error")
+
+                device_registry.update_command_status(
+                    req_id,
+                    status="success" if agent_success else "failed",
+                    result=agent_result,
+                    error=str(agent_error) if agent_error else None
+                )
 
                 return {
                     "command_id": req_id,
@@ -334,6 +390,7 @@ async def execute_command(payload: CommandPayload):
             device_manager.pending_requests.pop(req_id, None)
             logger.error(f"Error dispatching to device '{dev_id}': {e}")
             err_msg = f"Failed to dispatch to device: {str(e)}"
+            device_registry.update_command_status(req_id, status="failed", result=err_msg, error=err_msg)
             return {
                 "command_id": req_id,
                 "status": "failed",
@@ -398,6 +455,12 @@ async def execute_command(payload: CommandPayload):
             responses.append(f"Executed cloud capability: {t_name}")
 
     final_text = "\n\n".join(responses) if responses else "Command completed."
+    device_registry.update_command_status(
+        req_id,
+        status="failed" if has_error else "success",
+        result=final_text,
+        error=cloud_error.get("message") if cloud_error else None
+    )
     return {
         "command_id": req_id,
         "status": "success" if not has_error else "failed",
@@ -503,7 +566,7 @@ async def ws_device_endpoint(websocket: WebSocket, device_id: str):
         while True:
             data = await websocket.receive_json()
             msg_type = data.get("type")
-            if msg_type == "handshake":
+            if msg_type in ["register", "handshake"]:
                 device_name = data.get("device_name", "Windows PC")
                 platform = data.get("platform", "windows")
                 os_ver = data.get("os_version", "Windows 11")
@@ -520,24 +583,51 @@ async def ws_device_endpoint(websocket: WebSocket, device_id: str):
                     capabilities=caps,
                     token=token,
                 )
-                logger.info(f"Handshake completed for device '{device_id}' ({device_name} - {platform}) with caps: {caps}")
+                device_registry.register_device(
+                    device_id=device_id,
+                    device_name=device_name,
+                    platform=platform,
+                    os_version=os_ver,
+                    agent_version=agent_ver,
+                    capabilities=caps,
+                    token=token,
+                )
+                device_registry.register_socket(device_id, websocket)
+
+                # Send registration acknowledgment back to device
+                await websocket.send_json({
+                    "type": "device_registered",
+                    "device_id": device_id,
+                    "status": "online",
+                })
+                logger.info(f"Handshake & registration acknowledged for device '{device_id}' ({device_name} - {platform}) with caps: {caps}")
             elif msg_type == "heartbeat":
                 telemetry = data.get("telemetry", {})
                 device_manager.update_heartbeat(device_id, telemetry)
+                device_registry.update_heartbeat(device_id, timestamp=data.get("timestamp"), telemetry=telemetry)
             elif msg_type == "command_result":
-                req_id = data.get("request_id") or data.get("command_id")
-                result_text = data.get("result") or data.get("response", "Action completed on workstation.")
-                success = data.get("success", True)
+                req_id = data.get("command_id") or data.get("request_id")
+                result_text = data.get("result") or data.get("response", "Action completed on device.")
+                success = data.get("success", data.get("status") == "success")
+                err_text = data.get("error")
                 if req_id:
-                    device_manager.resolve_pending_request(req_id, result_text, success=success)
+                    device_registry.update_command_status(
+                        req_id,
+                        status="success" if success else "failed",
+                        result=result_text,
+                        error=str(err_text) if err_text else None
+                    )
+                    device_manager.resolve_pending_request(req_id, result_text, success=success, error=err_text)
                     logger.info(f"Resolved command request '{req_id}' from device '{device_id}'")
             else:
                 logger.info(f"Received update from device '{device_id}': {msg_type}")
     except WebSocketDisconnect:
         device_manager.unregister_device_socket(device_id, websocket=websocket)
+        device_registry.unregister_socket(device_id, websocket=websocket)
     except Exception as e:
         logger.warning(f"Device WebSocket error for '{device_id}': {e}")
         device_manager.unregister_device_socket(device_id, websocket=websocket)
+        device_registry.unregister_socket(device_id, websocket=websocket)
 
 
 @app.websocket("/ws")

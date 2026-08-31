@@ -7,7 +7,7 @@ import json
 import os
 import sqlite3
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, List, Dict, Optional
 
 from backend.core.config import settings
@@ -16,7 +16,7 @@ from backend.core.logger import get_logger
 logger = get_logger(__name__)
 
 _DB_PATH = os.getenv("DRAX_DB_PATH", settings.resolve_path("data/drax.db"))
-_db_lock = threading.Lock()
+_db_lock = threading.RLock()
 
 
 def get_connection() -> sqlite3.Connection:
@@ -112,6 +112,40 @@ def init_db():
                 content TEXT NOT NULL,
                 metadata TEXT DEFAULT '{}',
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+
+            # Devices registry table
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS devices (
+                device_id TEXT PRIMARY KEY,
+                device_name TEXT NOT NULL,
+                platform TEXT DEFAULT 'windows',
+                os_version TEXT DEFAULT '',
+                agent_version TEXT DEFAULT '2.0.0',
+                status TEXT DEFAULT 'offline',
+                capabilities TEXT DEFAULT '[]',
+                last_seen TEXT DEFAULT '',
+                is_primary INTEGER DEFAULT 0,
+                connection_id TEXT DEFAULT '',
+                token TEXT DEFAULT '',
+                paired_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+
+            # Commands audit & idempotency table
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS commands (
+                command_id TEXT PRIMARY KEY,
+                command TEXT NOT NULL,
+                intent TEXT DEFAULT '',
+                device_id TEXT DEFAULT NULL,
+                status TEXT DEFAULT 'queued',
+                result TEXT DEFAULT '',
+                error TEXT DEFAULT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """)
 
@@ -481,10 +515,196 @@ def get_recent_conversation(limit: int = 10) -> List[Dict[str, Any]]:
         conn = get_connection()
         try:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM conversation_history ORDER BY id DESC LIMIT ?", (limit,))
-            rows = [dict(row) for row in cursor.fetchall()]
-            rows.reverse()
-            return rows
+            cursor.execute(
+                "SELECT id, role, content, timestamp, metadata FROM conversation_history ORDER BY id DESC LIMIT ?",
+                (limit,),
+            )
+            rows = cursor.fetchall()
+            return [dict(row) for row in reversed(rows)]
+        finally:
+            conn.close()
+
+
+# ─── Device Operations ────────────────────────────────────────────────────────
+
+def upsert_device_db(
+    device_id: str,
+    device_name: str,
+    platform: str = "windows",
+    os_version: str = "",
+    agent_version: str = "2.0.0",
+    status: str = "offline",
+    capabilities: Optional[List[str]] = None,
+    last_seen: str = "",
+    is_primary: bool = False,
+    connection_id: str = "",
+    token: str = "",
+) -> Dict[str, Any]:
+    with _db_lock:
+        conn = get_connection()
+        try:
+            cursor = conn.cursor()
+            caps_json = json.dumps(capabilities or [])
+            is_prim_int = 1 if is_primary else 0
+            now_iso = datetime.now(timezone.utc).isoformat()
+            ls = last_seen or now_iso
+
+            cursor.execute("""
+            INSERT INTO devices (
+                device_id, device_name, platform, os_version, agent_version,
+                status, capabilities, last_seen, is_primary, connection_id, token, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(device_id) DO UPDATE SET
+                device_name = excluded.device_name,
+                platform = excluded.platform,
+                os_version = excluded.os_version,
+                agent_version = excluded.agent_version,
+                status = excluded.status,
+                capabilities = excluded.capabilities,
+                last_seen = excluded.last_seen,
+                is_primary = excluded.is_primary,
+                connection_id = excluded.connection_id,
+                token = CASE WHEN excluded.token != '' THEN excluded.token ELSE devices.token END,
+                updated_at = excluded.updated_at
+            """, (
+                device_id, device_name, platform, os_version, agent_version,
+                status, caps_json, ls, is_prim_int, connection_id, token, now_iso
+            ))
+            conn.commit()
+            return get_device_db(device_id) or {}
+        finally:
+            conn.close()
+
+
+def get_device_db(device_id: str) -> Optional[Dict[str, Any]]:
+    with _db_lock:
+        conn = get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM devices WHERE device_id = ?", (device_id,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            res = dict(row)
+            try:
+                res["capabilities"] = json.loads(res.get("capabilities", "[]"))
+            except Exception:
+                res["capabilities"] = []
+            res["is_primary"] = bool(res.get("is_primary", 0))
+            return res
+        finally:
+            conn.close()
+
+
+def get_all_devices_db() -> List[Dict[str, Any]]:
+    with _db_lock:
+        conn = get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM devices ORDER BY is_primary DESC, paired_at ASC")
+            rows = cursor.fetchall()
+            devices = []
+            for r in rows:
+                d = dict(r)
+                try:
+                    d["capabilities"] = json.loads(d.get("capabilities", "[]"))
+                except Exception:
+                    d["capabilities"] = []
+                d["is_primary"] = bool(d.get("is_primary", 0))
+                devices.append(d)
+            return devices
+        finally:
+            conn.close()
+
+
+def set_primary_device_db(device_id: str) -> bool:
+    with _db_lock:
+        conn = get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE devices SET is_primary = 0")
+            cursor.execute("UPDATE devices SET is_primary = 1 WHERE device_id = ?", (device_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            conn.close()
+
+
+def update_device_status_db(device_id: str, status: str, last_seen: Optional[str] = None):
+    with _db_lock:
+        conn = get_connection()
+        try:
+            cursor = conn.cursor()
+            now_iso = last_seen or datetime.now(timezone.utc).isoformat()
+            cursor.execute(
+                "UPDATE devices SET status = ?, last_seen = ?, updated_at = ? WHERE device_id = ?",
+                (status, now_iso, now_iso, device_id)
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+
+# ─── Command Operations & Idempotency ─────────────────────────────────────────
+
+def save_command_db(
+    command_id: str,
+    command: str,
+    intent: str = "",
+    device_id: Optional[str] = None,
+    status: str = "queued",
+    result: str = "",
+    error: Optional[str] = None,
+) -> Dict[str, Any]:
+    with _db_lock:
+        conn = get_connection()
+        try:
+            cursor = conn.cursor()
+            now_iso = datetime.now(timezone.utc).isoformat()
+            cursor.execute("""
+            INSERT INTO commands (command_id, command, intent, device_id, status, result, error, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(command_id) DO UPDATE SET
+                status = excluded.status,
+                result = excluded.result,
+                error = excluded.error,
+                updated_at = excluded.updated_at
+            """, (command_id, command, intent, device_id, status, result, error, now_iso, now_iso))
+            conn.commit()
+            return get_command_db(command_id) or {}
+        finally:
+            conn.close()
+
+
+def get_command_db(command_id: str) -> Optional[Dict[str, Any]]:
+    with _db_lock:
+        conn = get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM commands WHERE command_id = ?", (command_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+
+def update_command_db(
+    command_id: str,
+    status: str,
+    result: str = "",
+    error: Optional[str] = None,
+) -> bool:
+    with _db_lock:
+        conn = get_connection()
+        try:
+            cursor = conn.cursor()
+            now_iso = datetime.now(timezone.utc).isoformat()
+            cursor.execute(
+                "UPDATE commands SET status = ?, result = ?, error = ?, updated_at = ? WHERE command_id = ?",
+                (status, result, error, now_iso, command_id)
+            )
+            conn.commit()
+            return cursor.rowcount > 0
         finally:
             conn.close()
 
