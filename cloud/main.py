@@ -21,7 +21,10 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from cloud.devices import device_manager
+import urllib.parse
 from backend.agent.planner import plan_request
+from backend.agent.tool_registry import registry
+import backend.tools.cloud_tools
 from backend.tools.finance_tools import get_stock_price, fetch_quote
 from backend.tools.news_tools import get_news
 from backend.tools.weather_tools import get_weather
@@ -163,13 +166,31 @@ async def execute_command(payload: CommandPayload):
     needs_local = any(step.tool_name in [
         "open_app", "close_app", "play_media", "pause_media", "next_track", "previous_track",
         "browser_navigate", "browser_click", "browser_type", "browser_scroll", "lock_pc",
-        "take_screenshot", "screen_read", "shutdown_pc", "restart_pc", "find_file", "open_folder"
+        "take_screenshot", "screen_read", "shutdown_pc", "restart_pc", "find_file", "open_folder",
+        "open_url", "browser_open_tab", "browser_close_tab", "browser_hover", "browser_back", "browser_forward"
     ] for step in plan.steps)
 
-    # If it requires local Windows execution, route over WebSocket
+    # If it requires local Windows execution, route over WebSocket if device is online
     if needs_local:
         target = device_manager.get_online_device(payload.device_id)
         if not target:
+            # Fallback for browser search / url in pure cloud mode
+            cloud_fallbacks = []
+            for s in plan.steps:
+                if s.tool_name == "search_web":
+                    q = s.args.get("query", cmd)
+                    cloud_fallbacks.append(f"Web search for '{q}': https://www.google.com/search?q={urllib.parse.quote(q)}")
+                elif s.tool_name == "open_url":
+                    u = s.args.get("url", cmd)
+                    cloud_fallbacks.append(f"Website URL: {u}")
+
+            if cloud_fallbacks:
+                return {
+                    "command": cmd,
+                    "response": "\n\n".join(cloud_fallbacks),
+                    "routed_to": "cloud",
+                }
+
             return {
                 "command": cmd,
                 "response": "No paired Windows Agent is currently connected online to execute local PC actions.",
@@ -189,32 +210,28 @@ async def execute_command(payload: CommandPayload):
             "routed_to": dev_id,
         }
 
-    # Otherwise execute cloud-available tools directly
+    # Otherwise execute cloud-available tools directly via registry
     responses = []
     for step in plan.steps:
         t_name = step.tool_name
         args = step.args
-        if t_name == "get_stock_price":
-            responses.append(get_stock_price(args.get("symbol", "AAPL")))
-        elif t_name == "get_news":
-            responses.append(get_news(args.get("topic_or_region", "world")))
-        elif t_name == "get_weather":
-            responses.append(get_weather(args.get("city", "Delhi")))
-        elif t_name == "create_task":
-            add_task(args.get("title", cmd))
-            responses.append(f"Task created: {args.get('title', cmd)}")
-        elif t_name == "list_tasks":
-            tasks = get_tasks()
-            lines = [f"#{t['id']} {t['title']} [{t['status']}]" for t in tasks]
-            responses.append("Tasks:\n- " + "\n- ".join(lines) if lines else "No tasks found.")
-        elif t_name == "create_reminder":
-            add_reminder(args.get("message", "Reminder"), args.get("remind_at", "2026-12-31 12:00:00"))
-            responses.append(f"Reminder created for {args.get('remind_at')}: {args.get('message')}")
-        elif t_name == "get_knowledge":
-            responses.append(get_knowledge(args.get("query", cmd)))
+        tool = registry.get(t_name)
+        if tool:
+            try:
+                res = tool.execute(**args)
+                if res:
+                    responses.append(str(res))
+            except Exception as e:
+                logger.error(f"Error executing cloud tool {t_name}: {e}")
+                responses.append(f"Tool {t_name} error: {str(e)}")
+        elif t_name == "search_web":
+            q = args.get("query", cmd)
+            responses.append(f"Web search for '{q}': https://www.google.com/search?q={urllib.parse.quote(q)}")
+        elif t_name == "open_url":
+            u = args.get("url", cmd)
+            responses.append(f"Website URL: {u}")
         else:
             responses.append(f"Executed cloud capability: {t_name}")
-
 
     return {
         "command": cmd,
@@ -282,6 +299,11 @@ def get_stocks_endpoint(symbol: str = Query("AAPL", description="Stock ticker sy
     return {"symbol": symbol, "quote": get_stock_price(symbol)}
 
 
+@app.get("/watchlist")
+def get_watchlist_endpoint():
+    return {"watchlist": get_watchlist()}
+
+
 @app.get("/news")
 def get_news_endpoint(topic: str = Query("world", description="News topic or region")):
     return {"topic": topic, "content": get_news(topic)}
@@ -290,6 +312,11 @@ def get_news_endpoint(topic: str = Query("world", description="News topic or reg
 @app.get("/weather")
 def get_weather_endpoint(city: str = Query("Delhi", description="City name")):
     return {"city": city, "weather": get_weather(city)}
+
+
+@app.get("/knowledge")
+def get_knowledge_endpoint(query: str = Query(..., description="Knowledge search query")):
+    return {"query": query, "result": get_knowledge(query)}
 
 
 # ─── WebSockets for Real-Time Device Relay & Web Clients ────────────────────

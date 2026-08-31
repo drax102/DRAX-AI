@@ -164,15 +164,33 @@ function initChat() {
     if (input) input.value = '';
 
     try {
+      console.log('[DRAX API] Executing command:', cmd, '-> Endpoint:', `${API_BASE}/command`);
       const resp = await fetch(`${API_BASE}/command`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command: cmd })
       });
+      if (!resp.ok) {
+        let errDetail = `Server returned status ${resp.status} (${resp.statusText})`;
+        try {
+          const errData = await resp.json();
+          if (errData.detail) errDetail = errData.detail;
+          else if (errData.message) errDetail = errData.message;
+        } catch (_) {}
+        console.warn('[DRAX API] Command execution returned HTTP error:', resp.status, errDetail);
+        appendMessage(`Error: ${errDetail}`, 'drax');
+        return;
+      }
       const data = await resp.json();
+      console.log('[DRAX API] Response received:', data);
       appendMessage(data.response || 'Executed successfully.', 'drax');
     } catch (err) {
-      appendMessage(`Error contacting Drax Cloud: ${err.message}`, 'system');
+      console.error('[DRAX API] Command connection error:', err);
+      let userFriendly = err.message || 'Network connection failed.';
+      if (err.name === 'TypeError' && String(err.message).includes('Failed to fetch')) {
+        userFriendly = 'Could not reach DRAX Cloud API. Please verify the backend is online.';
+      }
+      appendMessage(`Error: ${userFriendly}`, 'system');
     }
   }
 
@@ -303,14 +321,27 @@ window.executeFromDevice = async function(cmd, deviceId = null) {
   if (chatBtn) chatBtn.click();
 
   try {
+    console.log('[DRAX API] Dispatching command for device:', deviceId, 'cmd:', cmd);
     const resp = await fetch(`${API_BASE}/command`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ command: cmd, device_id: deviceId })
     });
+    if (!resp.ok) {
+      let errDetail = `Server returned status ${resp.status}`;
+      try {
+        const errJson = await resp.json();
+        if (errJson.detail) errDetail = errJson.detail;
+      } catch (_) {}
+      console.warn('[DRAX API] Device command failed:', resp.status, errDetail);
+      appendMessage(`Error: ${errDetail}`, 'drax');
+      return;
+    }
     const data = await resp.json();
+    console.log('[DRAX API] Device command response:', data);
     appendMessage(data.response || 'Action sent to Windows workstation.', 'drax');
   } catch (e) {
+    console.error('[DRAX API] Device dispatch error:', e);
     appendMessage(`Error: ${e.message}`, 'system');
   }
 };
@@ -324,11 +355,18 @@ async function initTasks() {
     addBtn.addEventListener('click', async () => {
       const title = input.value.trim();
       if (!title) return;
-      await fetch(`${API_BASE}/tasks`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: title })
-      });
+      try {
+        const resp = await fetch(`${API_BASE}/tasks`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: title })
+        });
+        if (!resp.ok) {
+          console.warn('[DRAX API] Failed to add task:', resp.status);
+        }
+      } catch (err) {
+        console.error('[DRAX API] Add task network error:', err);
+      }
       input.value = '';
       loadTasks();
     });
@@ -342,6 +380,7 @@ async function loadTasks() {
   if (!container) return;
   try {
     const resp = await fetch(`${API_BASE}/tasks`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
     const data = await resp.json();
     const tasks = data.tasks || [];
     if (tasks.length === 0) {
@@ -357,7 +396,8 @@ async function loadTasks() {
       </div>
     `).join('');
   } catch (err) {
-    container.innerHTML = `<div class="empty-state">Failed to load tasks: ${err.message}</div>`;
+    console.error('[DRAX API] Tasks fetch error:', err);
+    container.innerHTML = `<div class="empty-state">Failed to load tasks (${err.message}).</div>`;
   }
 }
 
@@ -372,30 +412,38 @@ async function loadReminders() {
 
   try {
     const remResp = await fetch(`${API_BASE}/reminders`);
-    const remData = await remResp.json();
-    const rems = remData.reminders || [];
-    if (remContainer) {
-      remContainer.innerHTML = rems.length ? rems.map(r => `
-        <div class="card">
-          <h3>🔔 ${r.message}</h3>
-          <p style="color: var(--accent-cyan); margin-top: 6px;">Due: ${r.remind_at}</p>
-        </div>
-      `).join('') : '<div class="empty-state">No active reminders.</div>';
+    if (remResp.ok) {
+      const remData = await remResp.json();
+      const rems = remData.reminders || [];
+      if (remContainer) {
+        remContainer.innerHTML = rems.length ? rems.map(r => `
+          <div class="card">
+            <h3>🔔 ${r.message}</h3>
+            <p style="color: var(--accent-cyan); margin-top: 6px;">Due: ${r.remind_at}</p>
+          </div>
+        `).join('') : '<div class="empty-state">No active reminders.</div>';
+      }
+    } else {
+      console.warn('[DRAX API] Failed to fetch reminders:', remResp.status);
     }
 
     const alarmResp = await fetch(`${API_BASE}/alarms`);
-    const alarmData = await alarmResp.json();
-    const alarms = alarmData.alarms || [];
-    if (alarmContainer) {
-      alarmContainer.innerHTML = alarms.length ? alarms.map(a => `
-        <div class="card">
-          <h3>⏰ ${a.time_str}</h3>
-          <p style="color: var(--text-muted); margin-top: 6px;">${a.label}</p>
-        </div>
-      `).join('') : '<div class="empty-state">No active alarms.</div>';
+    if (alarmResp.ok) {
+      const alarmData = await alarmResp.json();
+      const alarms = alarmData.alarms || [];
+      if (alarmContainer) {
+        alarmContainer.innerHTML = alarms.length ? alarms.map(a => `
+          <div class="card">
+            <h3>⏰ ${a.time_str}</h3>
+            <p style="color: var(--text-muted); margin-top: 6px;">${a.label}</p>
+          </div>
+        `).join('') : '<div class="empty-state">No active alarms.</div>';
+      }
+    } else {
+      console.warn('[DRAX API] Failed to fetch alarms:', alarmResp.status);
     }
   } catch (err) {
-    console.error(err);
+    console.error('[DRAX API] Reminders/alarms fetch error:', err);
   }
 }
 
@@ -408,9 +456,14 @@ async function initFinance() {
     btn.addEventListener('click', async () => {
       const ticker = input.value.trim();
       if (!ticker) return;
-      const resp = await fetch(`${API_BASE}/stocks?symbol=${encodeURIComponent(ticker)}`);
-      const data = await resp.json();
-      alert(data.quote || 'Quote unavailable.');
+      try {
+        const resp = await fetch(`${API_BASE}/stocks?symbol=${encodeURIComponent(ticker)}`);
+        const data = await resp.json();
+        alert(data.quote || 'Quote unavailable.');
+      } catch (err) {
+        console.error('[DRAX API] Stock search error:', err);
+        alert(`Failed to fetch stock quote: ${err.message}`);
+      }
     });
   }
 
@@ -422,6 +475,7 @@ async function loadFinance() {
   if (!container) return;
   try {
     const resp = await fetch(`${API_BASE}/watchlist`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
     const data = await resp.json();
     const list = data.watchlist || [];
     container.innerHTML = list.length ? list.map(item => `
@@ -431,7 +485,7 @@ async function loadFinance() {
       </div>
     `).join('') : '<div class="empty-state">Watchlist is empty. Say "Track Nvidia" to add stocks.</div>';
   } catch (err) {
-    console.error(err);
+    console.error('[DRAX API] Watchlist fetch error:', err);
   }
 }
 
@@ -454,6 +508,7 @@ async function loadNews(topic) {
   container.innerHTML = '<div class="empty-state">Fetching verified RSS news...</div>';
   try {
     const resp = await fetch(`${API_BASE}/news?topic=${encodeURIComponent(topic)}`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
     const data = await resp.json();
     const lines = (data.content || '').split('\n').filter(l => l.startsWith('- '));
     container.innerHTML = lines.map(line => `
@@ -462,6 +517,7 @@ async function loadNews(topic) {
       </div>
     `).join('');
   } catch (err) {
+    console.error('[DRAX API] News fetch error:', err);
     container.innerHTML = `<div class="empty-state">News fetch failed: ${err.message}</div>`;
   }
 }

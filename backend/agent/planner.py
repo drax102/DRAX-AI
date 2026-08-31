@@ -166,7 +166,8 @@ def _parse_single_clause(clause: str) -> Optional[ActionStep]:
             city_clean = re.sub(r"^(?:what is|what's|how is|check|show me)?\s*(?:the)?\s*(?:weather|temperature)(?:\s+in)?\s*", "", c).strip()
             if city_clean:
                 city = city_clean
-        return ActionStep(tool_name="get_weather", args={"city": city}, description=f"Weather in {city}")
+        city = city.strip(" ?.!,'\":;").strip()
+        return ActionStep(tool_name="get_weather", args={"city": city or "Delhi"}, description=f"Weather in {city or 'Delhi'}")
 
     # 11. Media & Playback Controls
     if c in ["pause", "pause music", "pause song", "resume", "resume music", "resume song", "toggle music", "stop music"]:

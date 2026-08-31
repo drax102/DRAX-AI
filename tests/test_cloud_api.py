@@ -74,18 +74,45 @@ def test_cloud_info_endpoints():
     assert stocks_resp.status_code == 200
     assert "AAPL:" in stocks_resp.json()["quote"] or "USD" in stocks_resp.json()["quote"]
 
-    weather_resp = client.get("/weather?city=Delhi")
-    assert weather_resp.status_code == 200
-    assert "Weather in" in weather_resp.json()["weather"]
+    watchlist_resp = client.get("/watchlist")
+    assert watchlist_resp.status_code == 200
+    assert "watchlist" in watchlist_resp.json()
+
+    # Test weather for various cities
+    for city in ["Delhi", "Mumbai", "Chandigarh", "Jalandhar", "London", "New York"]:
+        weather_resp = client.get(f"/weather?city={city}")
+        assert weather_resp.status_code == 200
+        weather_text = weather_resp.json()["weather"]
+        assert "Weather in" in weather_text or "Temperature is" in weather_text or "°C" in weather_text
 
 
 def test_cloud_command_routing():
+    # Cloud-handled weather command
+    weather_cmd = client.post("/command", json={"command": "what is the weather in Delhi"})
+    assert weather_cmd.status_code == 200
+    weather_data = weather_cmd.json()
+    assert weather_data["routed_to"] == "cloud"
+    assert "Delhi" in weather_data["response"] and ("Weather in" in weather_data["response"] or "°C" in weather_data["response"])
+
     # Cloud-handled stock command
-    cmd_resp = client.post("/command", json={"command": "what is Apple stock price"})
+    cmd_resp = client.post("/command", json={"command": "what is Nvidia stock price"})
     assert cmd_resp.status_code == 200
     data = cmd_resp.json()
     assert data["routed_to"] == "cloud"
-    assert "AAPL" in data["response"] or "USD" in data["response"]
+    assert "NVDA" in data["response"] or "USD" in data["response"]
+
+    # Cloud-handled news command
+    news_cmd = client.post("/command", json={"command": "latest AI news"})
+    assert news_cmd.status_code == 200
+    news_data = news_cmd.json()
+    assert news_data["routed_to"] == "cloud"
+    assert "News Headlines:" in news_data["response"]
+
+    # Cloud-handled web search command
+    search_cmd = client.post("/command", json={"command": "search for Python tutorials"})
+    assert search_cmd.status_code == 200
+    search_data = search_cmd.json()
+    assert "python tutorials" in search_data["response"].lower()
 
     # Cloud-handled knowledge command
     know_resp = client.post("/command", json={"command": "tell me about artificial intelligence"})
@@ -95,8 +122,15 @@ def test_cloud_command_routing():
     assert "intelligence" in know_data["response"].lower() or "ai" in know_data["response"].lower()
 
     # Cloud-handled task creation command
-    task_cmd_resp = client.post("/command", json={"command": "create a task to test Drax"})
+    task_cmd_resp = client.post("/command", json={"command": "add a task to study"})
     assert task_cmd_resp.status_code == 200
     task_cmd_data = task_cmd_resp.json()
     assert task_cmd_data["routed_to"] == "cloud"
-    assert "test drax" in task_cmd_data["response"].lower()
+    assert "study" in task_cmd_data["response"].lower()
+
+    # Cloud-handled list tasks command
+    list_tasks_resp = client.post("/command", json={"command": "show my tasks"})
+    assert list_tasks_resp.status_code == 200
+    list_tasks_data = list_tasks_resp.json()
+    assert list_tasks_data["routed_to"] == "cloud"
+    assert "tasks" in list_tasks_data["response"].lower()
