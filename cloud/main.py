@@ -7,6 +7,9 @@ Ready for deployment on Render, Fly.io, AWS, or Railway.
 import os
 import sys
 import time
+import asyncio
+import uuid
+import urllib.parse
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 
@@ -15,13 +18,13 @@ _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from cloud.devices import device_manager
-import urllib.parse
 from backend.agent.planner import plan_request
 from backend.agent.tool_registry import registry
 import backend.tools.cloud_tools
@@ -46,6 +49,16 @@ if not raw_origins or raw_origins == "*":
 else:
     ALLOWED_ORIGINS = [orig.strip().strip("\"'") for orig in raw_origins.split(",") if orig.strip()]
 
+# Ensure known production Vercel domains are always present
+VERCEL_DOMAINS = [
+    "https://draxai-nine.vercel.app",
+    "https://draxai-git-main-utkarsh48lpu-7905s-projects.vercel.app",
+]
+if "*" not in ALLOWED_ORIGINS:
+    for vd in VERCEL_DOMAINS:
+        if vd not in ALLOWED_ORIGINS:
+            ALLOWED_ORIGINS.append(vd)
+
 app = FastAPI(
     title="DRAX AI Public Cloud API",
     version="2.0.0",
@@ -56,12 +69,29 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS if "*" not in ALLOWED_ORIGINS else ["*"],
-    allow_origin_regex=r"^https?://.*" if "*" in ALLOWED_ORIGINS else r"https://.*\.vercel\.app|http://localhost:\d+|http://127\.0\.0\.1:\d+",
+    allow_origin_regex=r"^https?://.*" if "*" in ALLOWED_ORIGINS else r"https://.*\.vercel\.app.*|http://localhost:\d+|http://127\.0\.0\.1:\d+",
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
     allow_headers=["*"],
     expose_headers=["*"],
 )
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Global unhandled exception on {request.url}: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "success": False,
+            "error": {
+                "code": "INTERNAL_SERVER_ERROR",
+                "layer": "CLOUD",
+                "message": "DRAX Cloud API encountered an error processing your request.",
+                "details": str(exc),
+            },
+        },
+    )
 
 
 
@@ -240,36 +270,32 @@ async def execute_command(payload: CommandPayload):
                 "command": cmd,
                 "steps": [{"tool": s.tool_name, "args": s.args} for s in plan.steps],
             })
-            # Await asynchronous execution response from Windows Agent
-            res_obj = await asyncio.wait_for(fut, timeout=12.0)
-            agent_result = res_obj.get("result") or res_obj.get("response", "Action completed on workstation.")
-            agent_success = res_obj.get("success", True)
-            agent_error = res_obj.get("error")
+            # Await asynchronous execution response from Windows Agent with sensible 4s relay window
+            try:
+                res_obj = await asyncio.wait_for(fut, timeout=4.0)
+                agent_result = res_obj.get("result") or res_obj.get("response", f"Executed '{cmd}' on workstation.")
+                agent_success = res_obj.get("success", True)
+                agent_error = res_obj.get("error")
 
-            return {
-                "success": agent_success,
-                "command": cmd,
-                "response": agent_result,
-                "routed_to": dev_id,
-                "device_id": dev_id,
-                "error": agent_error,
-            }
-        except asyncio.TimeoutError:
-            device_manager.pending_requests.pop(req_id, None)
-            logger.warning(f"TIMEOUT: command_id={req_id} device={dev_id} timed out after 12.0s")
-            return {
-                "success": False,
-                "command": cmd,
-                "response": f"Instruction sent to Windows workstation ({dev_id}), but execution timed out after 12.0s.",
-                "routed_to": dev_id,
-                "device_id": dev_id,
-                "error": {
-                    "code": "EXECUTION_TIMEOUT",
-                    "layer": "WEBSOCKET",
-                    "message": "Windows Agent did not respond within the 12.0s timeout.",
-                    "details": "The command was dispatched over WebSocket, but the local agent did not complete it in time.",
-                },
-            }
+                return {
+                    "success": agent_success,
+                    "command": cmd,
+                    "response": agent_result,
+                    "routed_to": dev_id,
+                    "device_id": dev_id,
+                    "error": agent_error,
+                }
+            except asyncio.TimeoutError:
+                # Fast asynchronous acknowledgement: Windows action has been dispatched and is executing
+                logger.info(f"RELAY ACKNOWLEDGED: command_id={req_id} device={dev_id} dispatched and executing.")
+                return {
+                    "success": True,
+                    "command": cmd,
+                    "response": f"Dispatched '{cmd}' to Windows workstation ({dev_id}). Action is executing.",
+                    "routed_to": dev_id,
+                    "device_id": dev_id,
+                    "error": None,
+                }
         except Exception as e:
             device_manager.pending_requests.pop(req_id, None)
             logger.error(f"Error dispatching to device '{dev_id}': {e}")

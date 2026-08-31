@@ -1,6 +1,6 @@
 // Drax AI Web Dashboard Controller (Production & Cloud Ready)
 
-// Dynamic API URL Resolution (Priority: URL query ?api= -> localStorage -> window.DRAX_API_URL -> window.__DRAX_API_URL__ -> localhost -> default Render Cloud backend)
+// Dynamic API URL Resolution (Priority: URL query ?api= -> localStorage -> window.DRAX_API_URL -> localhost -> default Render Cloud backend)
 function getApiBase() {
   const urlParams = new URLSearchParams(window.location.search);
   const paramApi = urlParams.get('api');
@@ -13,10 +13,12 @@ function getApiBase() {
   const stored = localStorage.getItem('drax_api_url');
   if (stored) {
     const clean = stored.replace(/\/$/, '');
-    if (window.location.protocol === 'https:' && clean.startsWith('http://') && !clean.includes('localhost') && !clean.includes('127.0.0.1')) {
-      return clean.replace('http://', 'https://');
+    if (window.location.protocol === 'https:') {
+      if (clean.startsWith('https://')) return clean;
+      localStorage.removeItem('drax_api_url');
+    } else {
+      return clean;
     }
-    return clean;
   }
 
   if (window.DRAX_API_URL) return window.DRAX_API_URL.replace(/\/$/, '');
@@ -212,11 +214,15 @@ function initChat() {
   const voiceBtn = document.getElementById('voice-btn');
   const quickBrief = document.getElementById('quick-brief-btn');
 
+  let isExecuting = false;
+
   async function execute(cmd) {
-    if (!cmd || !cmd.trim()) return;
-    appendMessage(cmd, 'user');
+    if (!cmd || !cmd.trim() || isExecuting) return;
+    isExecuting = true;
+    if (sendBtn) sendBtn.disabled = true;
     if (input) input.value = '';
 
+    appendMessage(cmd, 'user');
     const loader = showLoading(cmd);
 
     try {
@@ -261,7 +267,12 @@ function initChat() {
             errMessage = errData.error.message || errMessage;
             errDetails = errData.error.details || errDetails;
           }
-        } catch (_) {}
+        } catch (_) {
+          try {
+            const txt = await resp.text();
+            if (txt) errDetails = txt;
+          } catch (_) {}
+        }
 
         console.warn('[DRAX API] Command execution returned HTTP error:', resp.status, errMessage);
         appendMessage(errTitle, 'drax', {
@@ -322,6 +333,10 @@ function initChat() {
           details: `API Endpoint: ${API_BASE}/command | ${String(err)}`
         }
       });
+    } finally {
+      removeLoading(loader);
+      isExecuting = false;
+      if (sendBtn) sendBtn.disabled = false;
     }
   }
 
@@ -478,7 +493,12 @@ async function loadDevices() {
   }
 }
 
+let isDeviceExecuting = false;
+
 window.executeFromDevice = async function(cmd, deviceId = null) {
+  if (!cmd || !cmd.trim() || isDeviceExecuting) return;
+  isDeviceExecuting = true;
+
   appendMessage(cmd, 'user');
   const chatBtn = document.querySelector('[data-tab="chat"]');
   if (chatBtn) chatBtn.click();
@@ -519,7 +539,12 @@ window.executeFromDevice = async function(cmd, deviceId = null) {
           errMessage = errJson.error.message || errMessage;
           errDetails = errJson.error.details || errDetails;
         }
-      } catch (_) {}
+      } catch (_) {
+        try {
+          const txt = await resp.text();
+          if (txt) errDetails = txt;
+        } catch (_) {}
+      }
 
       appendMessage(errTitle, 'drax', {
         success: false,
@@ -577,6 +602,9 @@ window.executeFromDevice = async function(cmd, deviceId = null) {
         details: `API Endpoint: ${API_BASE}/command | ${String(e)}`
       }
     });
+  } finally {
+    removeLoading(loader);
+    isDeviceExecuting = false;
   }
 };
 
