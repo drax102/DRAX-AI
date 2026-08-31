@@ -51,11 +51,22 @@ def play_media(query: str = "", platform: str = "spotify") -> str:
         webbrowser.open(url)
         return f"Playing {clean_q} on YouTube."
     else:
-        # Launch Spotify app if installed, open search URI
-        open_app("spotify")
-        web_url = f"https://open.spotify.com/search/{urllib.parse.quote(clean_q)}"
-        webbrowser.open(web_url)
-        return f"Playing {clean_q} on Spotify."
+        # Launch Spotify desktop app and search URI
+        spotify_launched = False
+        try:
+            import os
+            if hasattr(os, "startfile"):
+                os.startfile(f"spotify:search:{urllib.parse.quote(clean_q)}")
+                spotify_launched = True
+        except Exception:
+            pass
+
+        if not spotify_launched:
+            open_app("spotify")
+            web_url = f"https://open.spotify.com/search/{urllib.parse.quote(clean_q)}"
+            webbrowser.open(web_url)
+
+        return f"Playing '{clean_q}' on Spotify."
 
 
 @register_tool(

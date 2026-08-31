@@ -86,33 +86,53 @@ function initModals() {
   const saveSettingsBtn = document.getElementById('save-settings-btn');
   const apiUrlInput = document.getElementById('api-url-input');
 
-  if (openPairBtn) openPairBtn.addEventListener('click', () => pairModal.classList.add('active'));
-  if (openPairBtn2) openPairBtn2.addEventListener('click', () => pairModal.classList.add('active'));
+  function openPairModal() {
+    if (pairModal) {
+      pairModal.classList.add('active');
+      if (pairingInput) {
+        pairingInput.value = '';
+        pairingInput.focus();
+      }
+    }
+  }
+
+  if (openPairBtn) openPairBtn.addEventListener('click', openPairModal);
+  if (openPairBtn2) openPairBtn2.addEventListener('click', openPairModal);
   if (cancelPairBtn) cancelPairBtn.addEventListener('click', () => pairModal.classList.remove('active'));
 
   if (submitPairBtn) {
     submitPairBtn.addEventListener('click', async () => {
-      const code = pairingInput.value.trim().toUpperCase();
-      if (!code) return;
+      const code = pairingInput ? pairingInput.value.trim().toUpperCase() : '';
+      if (!code) {
+        alert('Please enter your 4-character pairing code (e.g. DRAX-7K92).');
+        return;
+      }
       submitPairBtn.innerText = 'Connecting...';
+      submitPairBtn.disabled = true;
       try {
+        console.log('[DRAX API] Submitting pairing code:', code);
         const resp = await fetch(`${API_BASE}/api/pair/connect`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ pairing_code: code })
         });
         if (resp.ok) {
-          alert('Workstation successfully paired!');
+          const res = await resp.json();
+          const dev = res.device || {};
+          alert(`✓ PC Connected!\nDevice: ${dev.name || 'Windows Workstation'}\nPlatform: ${dev.platform || 'Windows'}\nAgent: Online & Listening`);
           pairModal.classList.remove('active');
           loadDevices();
+          loadTelemetry();
         } else {
           const err = await resp.json();
-          alert(`Pairing failed: ${err.detail || 'Invalid code'}`);
+          alert(`Pairing failed: ${err.detail || 'Invalid or expired pairing code.'}`);
         }
       } catch (e) {
+        console.error('[DRAX API] Pairing network error:', e);
         alert(`Error contacting cloud API: ${e.message}`);
       } finally {
         submitPairBtn.innerText = 'Connect Device';
+        submitPairBtn.disabled = false;
       }
     });
   }
@@ -267,50 +287,51 @@ async function loadDevices() {
 
   try {
     const resp = await fetch(`${API_BASE}/api/devices`);
+    if (!resp.ok) return;
     const data = await resp.json();
     const devices = data.devices || [];
 
     if (devices.length === 0) {
       container.innerHTML = `
-        <div class="card device-card">
-          <div class="device-header">
-            <i class="fa-brands fa-windows device-icon"></i>
-            <div>
-              <h3>My Windows Workstation</h3>
-              <p class="status-online"><span class="status-indicator"></span> Standalone Local Mode</p>
-            </div>
-          </div>
-          <div class="device-actions">
-            <button class="device-cmd-btn" onclick="executeFromDevice('open chrome')">Open Chrome</button>
-            <button class="device-cmd-btn" onclick="executeFromDevice('open spotify')">Open Spotify</button>
-            <button class="device-cmd-btn" onclick="executeFromDevice('lock pc')">Lock Workstation</button>
-          </div>
+        <div class="empty-state" style="grid-column: 1 / -1; padding: 30px; text-align: center;">
+          <p style="color: var(--text-muted); font-size: 1.05rem; margin-bottom: 12px;">No paired Windows Agent is currently registered.</p>
+          <button class="glow-btn" onclick="document.getElementById('pair-modal-btn').click()"><i class="fa-solid fa-plus"></i> Pair Your Windows PC</button>
         </div>
       `;
       return;
     }
 
-    container.innerHTML = devices.map(d => `
-      <div class="card device-card">
-        <div class="device-header">
-          <i class="fa-brands fa-windows device-icon"></i>
-          <div>
-            <h3>${d.name} (${d.device_id})</h3>
-            <p class="${d.status === 'online' ? 'status-online' : ''}" style="color: ${d.status === 'online' ? '#00ff88' : '#8b949e'}">
-              <span class="status-indicator" style="background: ${d.status === 'online' ? '#00ff88' : '#8b949e'}"></span>
-              ${d.status === 'online' ? 'Online & Listening' : 'Offline'}
-            </p>
+    const now = Date.now() / 1000;
+    container.innerHTML = devices.map(d => {
+      const isOnline = d.status === 'online';
+      const statusColor = isOnline ? '#00ff88' : '#8b949e';
+      const statusText = isOnline ? 'Online & Listening' : 'Offline';
+      const lastSeenSecs = Math.max(0, Math.floor(now - (d.last_seen || 0)));
+      const lastSeenStr = lastSeenSecs < 10 ? 'Just now' : lastSeenSecs < 60 ? `${lastSeenSecs}s ago` : `${Math.floor(lastSeenSecs / 60)}m ago`;
+
+      return `
+        <div class="card device-card">
+          <div class="device-header">
+            <i class="fa-brands fa-windows device-icon" style="color: ${statusColor};"></i>
+            <div>
+              <h3>${d.name || 'Windows PC'}</h3>
+              <p style="color: ${statusColor}; margin-top: 4px;">
+                <span class="status-indicator" style="background: ${statusColor};"></span>
+                ${statusText} &bull; <small style="color: var(--text-muted);">${lastSeenStr}</small>
+              </p>
+            </div>
+          </div>
+          <div class="device-actions">
+            <button class="device-cmd-btn" onclick="executeFromDevice('open spotify', '${d.device_id}')">Open Spotify</button>
+            <button class="device-cmd-btn" onclick="executeFromDevice('open chrome', '${d.device_id}')">Open Chrome</button>
+            <button class="device-cmd-btn" onclick="executeFromDevice('lock pc', '${d.device_id}')">Lock PC</button>
+            <button class="device-cmd-btn" onclick="executeFromDevice('take screenshot', '${d.device_id}')">Screenshot</button>
           </div>
         </div>
-        <div class="device-actions">
-          <button class="device-cmd-btn" onclick="executeFromDevice('open chrome', '${d.device_id}')">Open Chrome</button>
-          <button class="device-cmd-btn" onclick="executeFromDevice('open spotify', '${d.device_id}')">Open Spotify</button>
-          <button class="device-cmd-btn" onclick="executeFromDevice('lock pc', '${d.device_id}')">Lock PC</button>
-        </div>
-      </div>
-    `).join('');
+      `;
+    }).join('');
   } catch (err) {
-    console.error(err);
+    console.error('[DRAX API] Failed to load devices:', err);
   }
 }
 
@@ -531,6 +552,7 @@ async function initTelemetry() {
 async function loadTelemetry() {
   try {
     const resp = await fetch(`${API_BASE}/status`);
+    if (!resp.ok) return;
     const data = await resp.json();
     const t = data.telemetry || {};
     const cpuEl = document.getElementById('cpu-stat');
@@ -538,13 +560,32 @@ async function loadTelemetry() {
     const osEl = document.getElementById('os-stat');
     const stateEl = document.getElementById('state-stat');
     const badgeEl = document.getElementById('agent-state-label');
+    const indicatorEl = document.getElementById('status-indicator');
+
+    const hasOnlinePC = (data.connected_devices > 0) || (data.devices && data.devices.some(d => d.status === 'online'));
 
     if (cpuEl) cpuEl.innerText = `${t.cpu_percent || 0}%`;
     if (ramEl) ramEl.innerText = `${t.ram_percent || 0}% (${t.ram_used_gb || 0} GB)`;
     if (osEl) osEl.innerText = t.os_name || 'Windows 11';
-    if (stateEl) stateEl.innerText = data.state || 'ONLINE';
-    if (badgeEl) badgeEl.innerText = `DRAX ${data.state || 'ONLINE'}`;
+    if (stateEl) stateEl.innerText = hasOnlinePC ? 'ONLINE & LISTENING' : 'STANDBY (NO PC)';
+
+    if (badgeEl) {
+      if (hasOnlinePC) {
+        const firstOnline = data.devices.find(d => d.status === 'online');
+        badgeEl.innerHTML = `● DRAX PC ONLINE<br><span style="font-size: 0.72rem; color: #00f3ff; font-weight: normal;">${firstOnline ? firstOnline.name : 'Workstation'}</span>`;
+        if (indicatorEl) {
+          indicatorEl.style.background = '#00ff88';
+          indicatorEl.style.boxShadow = '0 0 8px #00ff88';
+        }
+      } else {
+        badgeEl.innerText = '● PC OFFLINE';
+        if (indicatorEl) {
+          indicatorEl.style.background = '#ff4444';
+          indicatorEl.style.boxShadow = 'none';
+        }
+      }
+    }
   } catch (err) {
-    console.debug('Telemetry polling fallback:', err);
+    console.debug('[DRAX API] Telemetry polling fallback:', err);
   }
 }

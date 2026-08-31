@@ -174,11 +174,139 @@ def launch_target(target: str) -> bool:
             return False
 
 
+import shutil
+
+def resolve_known_app(query: str) -> tuple[str, str] | None:
+    """
+    Dynamically resolve common Windows applications even if not pre-indexed.
+    Returns (target, display_name) or None.
+    """
+    q = normalize_command(query).lower().strip()
+    if not q:
+        return None
+
+    # Handle common acronyms
+    if q in ACRONYMS:
+        q = ACRONYMS[q][0]
+
+    # 1. Spotify
+    if any(k in q for k in ["spotify", "spotify music"]):
+        paths = [
+            os.path.expandvars(r"%APPDATA%\Spotify\Spotify.exe"),
+            os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WindowsApps\Spotify.exe"),
+        ]
+        for p in paths:
+            if os.path.exists(p):
+                return p, "Spotify"
+        return "spotify:", "Spotify"
+
+    # 2. Google Chrome
+    if any(k in q for k in ["chrome", "google chrome"]):
+        paths = [
+            os.path.expandvars(r"%ProgramFiles%\Google\Chrome\Application\chrome.exe"),
+            os.path.expandvars(r"%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"),
+            os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
+        ]
+        for p in paths:
+            if os.path.exists(p):
+                return p, "Google Chrome"
+        w = shutil.which("chrome")
+        if w:
+            return w, "Google Chrome"
+        return "chrome.exe", "Google Chrome"
+
+    # 3. Visual Studio Code
+    if any(k in q for k in ["vs code", "vscode", "visual studio code", "code"]):
+        paths = [
+            os.path.expandvars(r"%LOCALAPPDATA%\Programs\Microsoft VS Code\Code.exe"),
+            os.path.expandvars(r"%ProgramFiles%\Microsoft VS Code\Code.exe"),
+            os.path.expandvars(r"%ProgramFiles(x86)%\Microsoft VS Code\Code.exe"),
+        ]
+        for p in paths:
+            if os.path.exists(p):
+                return p, "Visual Studio Code"
+        w = shutil.which("code")
+        if w:
+            return w, "Visual Studio Code"
+
+    # 4. Microsoft Edge
+    if any(k in q for k in ["edge", "microsoft edge", "msedge"]):
+        paths = [
+            os.path.expandvars(r"%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"),
+            os.path.expandvars(r"%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"),
+        ]
+        for p in paths:
+            if os.path.exists(p):
+                return p, "Microsoft Edge"
+        return "microsoft-edge:", "Microsoft Edge"
+
+    # 5. Discord
+    if "discord" in q:
+        discord_up = os.path.expandvars(r"%LOCALAPPDATA%\Discord\Update.exe")
+        if os.path.exists(discord_up):
+            return f'"{discord_up}" --processStart Discord.exe', "Discord"
+        return "discord:", "Discord"
+
+    # 6. Telegram
+    if "telegram" in q:
+        p = os.path.expandvars(r"%APPDATA%\Telegram Desktop\Telegram.exe")
+        if os.path.exists(p):
+            return p, "Telegram"
+        return "tg:", "Telegram"
+
+    # 7. WhatsApp
+    if "whatsapp" in q:
+        return "whatsapp:", "WhatsApp"
+
+    # 8. VLC Media Player
+    if "vlc" in q:
+        paths = [
+            os.path.expandvars(r"%ProgramFiles%\VideoLAN\VLC\vlc.exe"),
+            os.path.expandvars(r"%ProgramFiles(x86)%\VideoLAN\VLC\vlc.exe"),
+        ]
+        for p in paths:
+            if os.path.exists(p):
+                return p, "VLC Media Player"
+        w = shutil.which("vlc")
+        if w:
+            return w, "VLC Media Player"
+
+    # 9. File Explorer / Shell Folders
+    if any(k in q for k in ["downloads", "download folder"]):
+        return "shell:Downloads", "Downloads"
+    if any(k in q for k in ["documents", "doc folder", "docs"]):
+        return "shell:Documents", "Documents"
+    if any(k in q for k in ["desktop folder", "my desktop"]):
+        return "shell:Desktop", "Desktop"
+    if any(k in q for k in ["file explorer", "explorer", "files", "my computer"]):
+        return "explorer.exe", "File Explorer"
+
+    # 10. Notepad & Calculator
+    if "notepad" in q:
+        return "notepad.exe", "Notepad"
+    if any(k in q for k in ["calc", "calculator"]):
+        return "calc.exe", "Calculator"
+    if any(k in q for k in ["cmd", "command prompt"]):
+        return "cmd.exe", "Command Prompt"
+    if any(k in q for k in ["powershell", "posh", "terminal"]):
+        return "powershell.exe", "PowerShell"
+    if any(k in q for k in ["task manager", "taskmgr"]):
+        return "taskmgr.exe", "Task Manager"
+
+    # 11. Generic which check
+    w = shutil.which(q)
+    if w:
+        return w, q.capitalize()
+
+    return None
+
+
 def open_app(command: str) -> str:
     """
     Main entry point for app opening command.
-    Enforces confidence threshold to prevent launching incorrect applications.
+    Enforces confidence threshold and dynamic Windows resolver fallbacks.
     """
+    # 1. Search indexed applications
     app, score = find_app_match(command)
 
     # High Confidence Match (>= 0.70) -> Launch
@@ -190,17 +318,23 @@ def open_app(command: str) -> str:
         else:
             return f"Could not launch {display}."
 
-    # Ambiguous / Low Confidence (0.50 <= score < 0.70) -> Ask User
-    elif app and 0.50 <= score < 0.70:
+    # 2. Dynamic known application resolution fallback
+    known = resolve_known_app(command)
+    if known:
+        target, display = known
+        if launch_target(target):
+            return f"Opening {display}."
+
+    # 3. Ambiguous / Low Confidence (0.50 <= score < 0.70) -> Ask User
+    if app and 0.50 <= score < 0.70:
         display = app.get("display_name", app.get("name", "App"))
         return f"Did you mean to open {display}? Please say 'Open {display}' to confirm."
 
-    # Fallback to search query
-    else:
-        clean_q = normalize_command(command)
-        if clean_q:
-            logger.info(f"App not found for '{command}' — searching Google")
-            url = f"https://www.google.com/search?q={clean_q}"
-            webbrowser.open(url)
-            return f"Searching Google for {clean_q}."
-        return "I couldn't find that application."
+    # 4. Fallback to search query
+    clean_q = normalize_command(command)
+    if clean_q:
+        logger.info(f"App not found for '{command}' — searching Google")
+        url = f"https://www.google.com/search?q={clean_q}"
+        webbrowser.open(url)
+        return f"Searching Google for {clean_q}."
+    return "I couldn't find that application."

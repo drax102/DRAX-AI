@@ -71,10 +71,12 @@ class CommandPayload(BaseModel):
     device_id: Optional[str] = None
 
 
+import uuid
+
 class PairGenerateRequest(BaseModel):
-    device_id: str
-    device_name: str
-    token: str
+    device_id: Optional[str] = None
+    device_name: Optional[str] = "Windows PC"
+    token: Optional[str] = None
 
 
 class PairConnectRequest(BaseModel):
@@ -107,16 +109,23 @@ def get_health():
         "version": "2.0.0",
         "environment": DRAX_ENV,
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "connected_devices": len(device_manager.device_sockets),
+        "connected_devices": len([d for d in device_manager.get_devices() if d["status"] == "online"]),
     }
 
 
 @app.get("/status")
 def get_status():
+    devices = device_manager.get_devices()
+    online_devs = [d for d in devices if d["status"] == "online"]
+    latest_telemetry = online_devs[0].get("telemetry", {}) if online_devs else {}
     return {
         "status": "online",
+        "agent_status": "online" if online_devs else "offline",
+        "service": "DRAX AI Cloud API",
         "version": "2.0.0",
-        "devices": device_manager.get_devices(),
+        "devices": devices,
+        "connected_devices": len(online_devs),
+        "telemetry": latest_telemetry,
         "timestamp": time.time(),
     }
 
@@ -125,8 +134,12 @@ def get_status():
 
 @app.post("/api/pair/generate")
 def generate_device_pairing(req: PairGenerateRequest):
-    """Windows Agent requests a temporary pairing code."""
-    code = device_manager.generate_pairing_code(req.device_id, req.device_name, req.token)
+    """Windows Agent or Web Client requests a temporary pairing code."""
+    code = device_manager.generate_pairing_code(
+        device_id=req.device_id or f"drax_pc_{uuid.uuid4().hex[:6]}",
+        device_name=req.device_name or "Windows PC",
+        token=req.token or str(uuid.uuid4()),
+    )
     return {"pairing_code": code, "expires_in_seconds": 600}
 
 
@@ -154,7 +167,7 @@ async def execute_command(payload: CommandPayload):
     """
     Process command from Web/Mobile client.
     If command requires local Windows OS capabilities (e.g. open chrome, play music, lock pc),
-    it is securely routed to the paired Windows Agent via WebSocket.
+    it is securely routed to the paired Windows Agent via WebSocket and awaits the live result.
     Otherwise, cloud services handle it directly.
     """
     cmd = payload.command.strip()
@@ -174,7 +187,7 @@ async def execute_command(payload: CommandPayload):
     if needs_local:
         target = device_manager.get_online_device(payload.device_id)
         if not target:
-            # Fallback for browser search / url in pure cloud mode
+            # Fallback for browser search / url in pure cloud mode if user is searching
             cloud_fallbacks = []
             for s in plan.steps:
                 if s.tool_name == "search_web":
@@ -193,22 +206,43 @@ async def execute_command(payload: CommandPayload):
 
             return {
                 "command": cmd,
-                "response": "No paired Windows Agent is currently connected online to execute local PC actions.",
+                "response": "No Windows Agent is connected. Open Drax AI on your PC and pair this device.",
                 "routed_to": None,
             }
+
         dev_id, ws = target
-        req_id = f"req_{int(time.time() * 1000)}"
-        await ws.send_json({
-            "type": "execute_command",
-            "request_id": req_id,
-            "command": cmd,
-            "steps": [{"tool": s.tool_name, "args": s.args} for s in plan.steps],
-        })
-        return {
-            "command": cmd,
-            "response": f"Routed instruction to paired Windows workstation ({dev_id}).",
-            "routed_to": dev_id,
-        }
+        req_id = f"req_{int(time.time() * 1000)}_{uuid.uuid4().hex[:4]}"
+        fut = device_manager.create_pending_request(req_id)
+        try:
+            await ws.send_json({
+                "type": "execute_command",
+                "request_id": req_id,
+                "command": cmd,
+                "steps": [{"tool": s.tool_name, "args": s.args} for s in plan.steps],
+            })
+            # Await asynchronous execution response from Windows Agent
+            res_obj = await asyncio.wait_for(fut, timeout=12.0)
+            agent_result = res_obj.get("result", "Action completed on workstation.")
+            return {
+                "command": cmd,
+                "response": agent_result,
+                "routed_to": dev_id,
+            }
+        except asyncio.TimeoutError:
+            device_manager.pending_requests.pop(req_id, None)
+            return {
+                "command": cmd,
+                "response": f"Instruction sent to Windows workstation ({dev_id}), but execution timed out.",
+                "routed_to": dev_id,
+            }
+        except Exception as e:
+            device_manager.pending_requests.pop(req_id, None)
+            logger.error(f"Error dispatching to device '{dev_id}': {e}")
+            return {
+                "command": cmd,
+                "response": f"Failed to dispatch to Windows Agent: {e}",
+                "routed_to": dev_id,
+            }
 
     # Otherwise execute cloud-available tools directly via registry
     responses = []
@@ -323,18 +357,35 @@ def get_knowledge_endpoint(query: str = Query(..., description="Knowledge search
 
 @app.websocket("/ws/device/{device_id}")
 async def ws_device_endpoint(websocket: WebSocket, device_id: str):
-    """Windows Agent maintains persistent connection for inbound tool dispatches."""
+    """Windows Agent maintains persistent connection for inbound tool dispatches and telemetry."""
     await websocket.accept()
     device_manager.register_device_socket(device_id, websocket)
     try:
         while True:
             data = await websocket.receive_json()
-            # Broadcast telemetry or execution results to listening web clients
-            logger.info(f"Received update from device '{device_id}': {data.get('type')}")
+            msg_type = data.get("type")
+            if msg_type == "handshake":
+                device_name = data.get("device_name", "Windows PC")
+                platform = data.get("platform", "Windows")
+                token = data.get("token", "")
+                device_manager.register_device_socket(device_id, websocket, name=device_name, platform=platform, token=token)
+                logger.info(f"Handshake completed for device '{device_id}' ({device_name})")
+            elif msg_type == "heartbeat":
+                telemetry = data.get("telemetry", {})
+                device_manager.update_heartbeat(device_id, telemetry)
+            elif msg_type == "command_result":
+                req_id = data.get("request_id")
+                result_text = data.get("result", "Action completed on workstation.")
+                success = data.get("success", True)
+                if req_id:
+                    device_manager.resolve_pending_request(req_id, result_text, success=success)
+                    logger.info(f"Resolved command request '{req_id}' from device '{device_id}'")
+            else:
+                logger.info(f"Received update from device '{device_id}': {msg_type}")
     except WebSocketDisconnect:
         device_manager.unregister_device_socket(device_id)
     except Exception as e:
-        logger.warning(f"Device WebSocket error: {e}")
+        logger.warning(f"Device WebSocket error for '{device_id}': {e}")
         device_manager.unregister_device_socket(device_id)
 
 
