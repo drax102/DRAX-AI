@@ -80,9 +80,23 @@ def test_cloud_info_endpoints():
 
 
 def test_cloud_command_routing():
-    # Cloud-handled command
+    # Cloud-handled stock command
     cmd_resp = client.post("/command", json={"command": "what is Apple stock price"})
     assert cmd_resp.status_code == 200
     data = cmd_resp.json()
     assert data["routed_to"] == "cloud"
     assert "AAPL" in data["response"] or "USD" in data["response"]
+
+    # Cloud-handled knowledge command
+    know_resp = client.post("/command", json={"command": "tell me about artificial intelligence"})
+    assert know_resp.status_code == 200
+    know_data = know_resp.json()
+    assert know_data["routed_to"] == "cloud"
+    assert "intelligence" in know_data["response"].lower() or "ai" in know_data["response"].lower()
+
+    # Cloud-handled task creation command
+    task_cmd_resp = client.post("/command", json={"command": "create a task to test Drax"})
+    assert task_cmd_resp.status_code == 200
+    task_cmd_data = task_cmd_resp.json()
+    assert task_cmd_data["routed_to"] == "cloud"
+    assert "test drax" in task_cmd_data["response"].lower()

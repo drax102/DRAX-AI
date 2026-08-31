@@ -25,6 +25,7 @@ from backend.agent.planner import plan_request
 from backend.tools.finance_tools import get_stock_price, fetch_quote
 from backend.tools.news_tools import get_news
 from backend.tools.weather_tools import get_weather
+from backend.tools.knowledge_tools import get_knowledge
 from backend.database.db import (
     get_tasks, add_task, delete_task_by_id, complete_task_by_id,
     get_active_reminders, add_reminder, delete_reminder_by_id,
@@ -212,8 +213,11 @@ async def execute_command(payload: CommandPayload):
         elif t_name == "create_reminder":
             add_reminder(args.get("message", "Reminder"), args.get("remind_at", "2026-12-31 12:00:00"))
             responses.append(f"Reminder created for {args.get('remind_at')}: {args.get('message')}")
+        elif t_name == "get_knowledge":
+            responses.append(get_knowledge(args.get("query", cmd)))
         else:
             responses.append(f"Executed cloud capability: {t_name}")
+
 
     return {
         "command": cmd,
