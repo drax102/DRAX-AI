@@ -205,53 +205,94 @@ async def execute_command(payload: CommandPayload):
 
             if cloud_fallbacks:
                 return {
+                    "success": True,
                     "command": cmd,
                     "response": "\n\n".join(cloud_fallbacks),
                     "routed_to": "cloud",
+                    "device_id": None,
+                    "error": None,
                 }
 
             return {
+                "success": False,
                 "command": cmd,
                 "response": "No Windows Agent is connected. Open Drax AI on your PC and pair this device.",
                 "routed_to": None,
+                "device_id": None,
+                "error": {
+                    "code": "AGENT_OFFLINE",
+                    "layer": "WINDOWS AGENT",
+                    "message": "No paired Windows Agent is currently connected online to execute local PC actions.",
+                    "details": "Start Drax AI on your Windows workstation and verify the connection in system tray.",
+                },
             }
 
         dev_id, ws = target
         req_id = f"req_{int(time.time() * 1000)}_{uuid.uuid4().hex[:4]}"
         fut = device_manager.create_pending_request(req_id)
+        logger.info(f"COMMAND ROUTING: command_id={req_id} route=windows_agent device={dev_id} cmd='{cmd}'")
+
         try:
             await ws.send_json({
                 "type": "execute_command",
                 "request_id": req_id,
+                "command_id": req_id,
                 "command": cmd,
                 "steps": [{"tool": s.tool_name, "args": s.args} for s in plan.steps],
             })
             # Await asynchronous execution response from Windows Agent
             res_obj = await asyncio.wait_for(fut, timeout=12.0)
-            agent_result = res_obj.get("result", "Action completed on workstation.")
+            agent_result = res_obj.get("result") or res_obj.get("response", "Action completed on workstation.")
+            agent_success = res_obj.get("success", True)
+            agent_error = res_obj.get("error")
+
             return {
+                "success": agent_success,
                 "command": cmd,
                 "response": agent_result,
                 "routed_to": dev_id,
+                "device_id": dev_id,
+                "error": agent_error,
             }
         except asyncio.TimeoutError:
             device_manager.pending_requests.pop(req_id, None)
+            logger.warning(f"TIMEOUT: command_id={req_id} device={dev_id} timed out after 12.0s")
             return {
+                "success": False,
                 "command": cmd,
-                "response": f"Instruction sent to Windows workstation ({dev_id}), but execution timed out.",
+                "response": f"Instruction sent to Windows workstation ({dev_id}), but execution timed out after 12.0s.",
                 "routed_to": dev_id,
+                "device_id": dev_id,
+                "error": {
+                    "code": "EXECUTION_TIMEOUT",
+                    "layer": "WEBSOCKET",
+                    "message": "Windows Agent did not respond within the 12.0s timeout.",
+                    "details": "The command was dispatched over WebSocket, but the local agent did not complete it in time.",
+                },
             }
         except Exception as e:
             device_manager.pending_requests.pop(req_id, None)
             logger.error(f"Error dispatching to device '{dev_id}': {e}")
             return {
+                "success": False,
                 "command": cmd,
                 "response": f"Failed to dispatch to Windows Agent: {e}",
                 "routed_to": dev_id,
+                "device_id": dev_id,
+                "error": {
+                    "code": "DISPATCH_FAILED",
+                    "layer": "CLOUD",
+                    "message": f"Failed to communicate with Windows Agent: {str(e)}",
+                    "details": "WebSocket connection failure during dispatch.",
+                },
             }
 
     # Otherwise execute cloud-available tools directly via registry
     responses = []
+    has_error = False
+    cloud_error = None
+    logger.info(f"COMMAND ROUTING: route=cloud cmd='{cmd}'")
+
     for step in plan.steps:
         t_name = step.tool_name
         args = step.args
@@ -260,10 +301,27 @@ async def execute_command(payload: CommandPayload):
             try:
                 res = tool.execute(**args)
                 if res:
-                    responses.append(str(res))
+                    res_str = str(res)
+                    responses.append(res_str)
+                    if "Sorry" in res_str or "unavailable" in res_str.lower() or "not find" in res_str.lower() or "error" in res_str.lower():
+                        has_error = True
+                        cloud_error = {
+                            "code": "CLOUD_TOOL_ERROR",
+                            "layer": "CLOUD",
+                            "message": res_str,
+                            "details": f"Cloud tool '{t_name}' returned error response.",
+                        }
             except Exception as e:
                 logger.error(f"Error executing cloud tool {t_name}: {e}")
-                responses.append(f"Tool {t_name} error: {str(e)}")
+                err_msg = f"Tool {t_name} error: {str(e)}"
+                responses.append(err_msg)
+                has_error = True
+                cloud_error = {
+                    "code": "CLOUD_EXCEPTION",
+                    "layer": "CLOUD",
+                    "message": err_msg,
+                    "details": f"Exception raised while executing '{t_name}'.",
+                }
         elif t_name == "search_web":
             q = args.get("query", cmd)
             responses.append(f"Web search for '{q}': https://www.google.com/search?q={urllib.parse.quote(q)}")
@@ -273,10 +331,14 @@ async def execute_command(payload: CommandPayload):
         else:
             responses.append(f"Executed cloud capability: {t_name}")
 
+    final_text = "\n\n".join(responses) if responses else "Command completed."
     return {
+        "success": not has_error,
         "command": cmd,
-        "response": "\n\n".join(responses) if responses else "Command completed.",
+        "response": final_text,
         "routed_to": "cloud",
+        "device_id": None,
+        "error": cloud_error,
     }
 
 

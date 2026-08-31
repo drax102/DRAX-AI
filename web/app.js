@@ -178,6 +178,33 @@ function initClock() {
   setInterval(update, 1000);
 }
 
+function escapeHtml(unsafe) {
+  if (typeof unsafe !== 'string') return String(unsafe || '');
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function showLoading(cmd) {
+  const container = document.getElementById('chat-messages');
+  if (!container) return null;
+  const div = document.createElement('div');
+  div.className = 'msg drax loading-msg';
+  div.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> DRAX is working on <em>"${escapeHtml(cmd)}"</em>...`;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+  return div;
+}
+
+function removeLoading(el) {
+  if (el && el.parentNode) {
+    el.parentNode.removeChild(el);
+  }
+}
+
 // ── Chat & Command Terminal ────────────────────────────────────────────────
 function initChat() {
   const input = document.getElementById('command-input');
@@ -190,6 +217,8 @@ function initChat() {
     appendMessage(cmd, 'user');
     if (input) input.value = '';
 
+    const loader = showLoading(cmd);
+
     try {
       console.log('[DRAX API] Executing command:', cmd, '-> Endpoint:', `${API_BASE}/command`);
       const resp = await fetch(`${API_BASE}/command`, {
@@ -201,15 +230,49 @@ function initChat() {
         body: JSON.stringify({ command: cmd })
       });
 
+      removeLoading(loader);
+
       if (!resp.ok) {
-        let errDetail = `Server error (HTTP ${resp.status})`;
+        let errTitle = `HTTP ${resp.status} Error`;
+        let errMessage = `Server returned status ${resp.status} (${resp.statusText})`;
+        let errDetails = '';
+
+        if (resp.status === 503) {
+          errTitle = 'Windows Agent Offline';
+          errMessage = 'No paired Windows Agent is currently connected online.';
+          errDetails = 'Start Drax AI on your Windows workstation and verify the WebSocket connection.';
+        } else if (resp.status === 504 || resp.status === 408) {
+          errTitle = 'Command Timed Out';
+          errMessage = 'Windows Agent or cloud service did not respond in time.';
+          errDetails = 'The request exceeded the execution deadline.';
+        } else if (resp.status === 500) {
+          errTitle = 'Cloud Internal Error';
+          errMessage = 'DRAX Cloud API encountered an internal server error.';
+        } else if (resp.status === 404) {
+          errTitle = 'Resource Not Found';
+          errMessage = 'Requested API endpoint or device was not found.';
+        }
+
         try {
           const errData = await resp.json();
-          if (errData.detail) errDetail = errData.detail;
-          else if (errData.message) errDetail = errData.message;
+          if (errData.detail) errMessage = errData.detail;
+          else if (errData.message) errMessage = errData.message;
+          if (errData.error) {
+            errMessage = errData.error.message || errMessage;
+            errDetails = errData.error.details || errDetails;
+          }
         } catch (_) {}
-        console.warn('[DRAX API] Command execution returned HTTP error:', resp.status, errDetail);
-        appendMessage(`Error: ${errDetail}`, 'drax');
+
+        console.warn('[DRAX API] Command execution returned HTTP error:', resp.status, errMessage);
+        appendMessage(errTitle, 'drax', {
+          success: false,
+          error: {
+            code: `HTTP_${resp.status}`,
+            layer: resp.status === 503 ? 'WINDOWS AGENT' : 'CLOUD',
+            message: errMessage,
+            details: errDetails
+          }
+        });
         return;
       }
 
@@ -218,20 +281,47 @@ function initChat() {
         data = await resp.json();
       } catch (jsonErr) {
         console.error('[DRAX API] Invalid JSON response:', jsonErr);
-        appendMessage('Error: Received invalid JSON response from DRAX Cloud API.', 'drax');
+        appendMessage('Invalid Cloud Response', 'drax', {
+          success: false,
+          error: {
+            code: 'INVALID_JSON',
+            layer: 'CLOUD',
+            message: 'Received invalid JSON payload from DRAX Cloud API.',
+            details: String(jsonErr)
+          }
+        });
         return;
       }
 
       console.log('[DRAX API] Response received:', data);
-      const reply = data.response || data.result || data.message || 'Executed successfully.';
-      appendMessage(reply, 'drax');
+      const isSuccess = data.success !== false;
+      const text = data.response || data.result || data.message || 'Executed successfully.';
+
+      appendMessage(text, 'drax', {
+        success: isSuccess,
+        routed_to: data.routed_to,
+        device_id: data.device_id,
+        error: data.error
+      });
+
     } catch (err) {
+      removeLoading(loader);
       console.error('[DRAX API] Command connection error:', err);
-      let userFriendly = 'DRAX Cloud is unreachable. Please verify the backend is online.';
-      if (err && err.name !== 'TypeError' && err.message && !err.message.includes('Failed to fetch')) {
-        userFriendly = `Connection error: ${err.message}`;
-      }
-      appendMessage(`Error: ${userFriendly}`, 'system');
+
+      let isNetwork = err.name === 'TypeError' || String(err.message).includes('Failed to fetch');
+      let errMsg = isNetwork
+        ? 'Unable to reach DRAX Cloud. Check your internet connection or Render backend service.'
+        : `Connection error: ${err.message}`;
+
+      appendMessage(isNetwork ? 'Network Connection Error' : 'Client Error', 'drax', {
+        success: false,
+        error: {
+          code: isNetwork ? 'NETWORK_UNREACHABLE' : 'CLIENT_EXCEPTION',
+          layer: 'BROWSER',
+          message: errMsg,
+          details: `API Endpoint: ${API_BASE}/command | ${String(err)}`
+        }
+      });
     }
   }
 
@@ -287,12 +377,44 @@ function initChat() {
   }
 }
 
-function appendMessage(text, type) {
+function appendMessage(text, type, meta = null) {
   const container = document.getElementById('chat-messages');
   if (!container) return;
   const div = document.createElement('div');
   div.className = `msg ${type}`;
-  div.innerText = text;
+
+  if (meta && typeof meta === 'object') {
+    const isSuccess = meta.success !== false;
+    const icon = isSuccess ? '✓' : '✕';
+    const statusClass = isSuccess ? 'status-ok' : 'status-err';
+    if (!isSuccess) div.classList.add('error-msg');
+
+    let html = `<div class="msg-header ${statusClass}"><strong>${icon}</strong> ${escapeHtml(text)}</div>`;
+
+    if (meta.error) {
+      const err = meta.error;
+      if (err.message && err.message !== text) {
+        html += `<div class="msg-reason"><strong>Reason:</strong> ${escapeHtml(err.message)}</div>`;
+      }
+
+      const detailId = `detail_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+      html += `
+        <div class="msg-details-toggle" onclick="document.getElementById('${detailId}').classList.toggle('active')">
+          <small><i class="fa-solid fa-circle-info"></i> [Show details]</small>
+        </div>
+        <div class="msg-details-content" id="${detailId}">
+          <div><strong>Layer:</strong> ${escapeHtml(err.layer || meta.routed_to || 'SYSTEM')}</div>
+          <div><strong>Code:</strong> ${escapeHtml(err.code || 'ERROR')}</div>
+          ${meta.device_id ? `<div><strong>Device:</strong> ${escapeHtml(meta.device_id)}</div>` : ''}
+          ${err.details ? `<div><strong>Details:</strong> ${escapeHtml(err.details)}</div>` : ''}
+        </div>
+      `;
+    }
+    div.innerHTML = html;
+  } else {
+    div.innerText = text;
+  }
+
   container.appendChild(div);
   container.scrollTop = container.scrollHeight;
 }
@@ -324,7 +446,7 @@ async function loadDevices() {
 
     const now = Date.now() / 1000;
     container.innerHTML = devices.map(d => {
-      const isOnline = d.status === 'online';
+      const isOnline = d.status === 'online' || d.online === true;
       const statusColor = isOnline ? '#00ff88' : '#8b949e';
       const statusText = isOnline ? 'Online & Listening' : 'Offline';
       const lastSeenSecs = Math.max(0, Math.floor(now - (d.last_seen || 0)));
@@ -335,7 +457,7 @@ async function loadDevices() {
           <div class="device-header">
             <i class="fa-brands fa-windows device-icon" style="color: ${statusColor};"></i>
             <div>
-              <h3>${d.name || 'Windows PC'}</h3>
+              <h3>${escapeHtml(d.name || 'Windows PC')}</h3>
               <p style="color: ${statusColor}; margin-top: 4px;">
                 <span class="status-indicator" style="background: ${statusColor};"></span>
                 ${statusText} &bull; <small style="color: var(--text-muted);">${lastSeenStr}</small>
@@ -358,9 +480,10 @@ async function loadDevices() {
 
 window.executeFromDevice = async function(cmd, deviceId = null) {
   appendMessage(cmd, 'user');
-  // Switch to chat tab
   const chatBtn = document.querySelector('[data-tab="chat"]');
   if (chatBtn) chatBtn.click();
+
+  const loader = showLoading(cmd);
 
   try {
     console.log('[DRAX API] Dispatching command for device:', deviceId, 'cmd:', cmd);
@@ -372,35 +495,88 @@ window.executeFromDevice = async function(cmd, deviceId = null) {
       },
       body: JSON.stringify({ command: cmd, device_id: deviceId })
     });
+
+    removeLoading(loader);
+
     if (!resp.ok) {
-      let errDetail = `Server error (HTTP ${resp.status})`;
+      let errTitle = `HTTP ${resp.status} Error`;
+      let errMessage = `Server returned status ${resp.status}`;
+      let errDetails = '';
+
+      if (resp.status === 503) {
+        errTitle = 'Windows Agent Offline';
+        errMessage = 'Selected Windows Agent is offline.';
+      } else if (resp.status === 504 || resp.status === 408) {
+        errTitle = 'Command Timed Out';
+        errMessage = 'Windows Agent did not respond in time.';
+      }
+
       try {
         const errJson = await resp.json();
-        if (errJson.detail) errDetail = errJson.detail;
-        else if (errJson.message) errDetail = errJson.message;
+        if (errJson.detail) errMessage = errJson.detail;
+        else if (errJson.message) errMessage = errJson.message;
+        if (errJson.error) {
+          errMessage = errJson.error.message || errMessage;
+          errDetails = errJson.error.details || errDetails;
+        }
       } catch (_) {}
-      console.warn('[DRAX API] Device command failed:', resp.status, errDetail);
-      appendMessage(`Error: ${errDetail}`, 'drax');
+
+      appendMessage(errTitle, 'drax', {
+        success: false,
+        error: {
+          code: `HTTP_${resp.status}`,
+          layer: resp.status === 503 ? 'WINDOWS AGENT' : 'CLOUD',
+          message: errMessage,
+          details: errDetails
+        }
+      });
       return;
     }
+
     let data;
     try {
       data = await resp.json();
     } catch (jsonErr) {
-      console.error('[DRAX API] Invalid JSON response:', jsonErr);
-      appendMessage('Error: Received invalid JSON response from DRAX Cloud API.', 'drax');
+      appendMessage('Invalid Cloud Response', 'drax', {
+        success: false,
+        error: {
+          code: 'INVALID_JSON',
+          layer: 'CLOUD',
+          message: 'Received invalid JSON payload from DRAX Cloud API.',
+          details: String(jsonErr)
+        }
+      });
       return;
     }
+
     console.log('[DRAX API] Device command response:', data);
-    const reply = data.response || data.result || data.message || 'Action completed on workstation.';
-    appendMessage(reply, 'drax');
+    const isSuccess = data.success !== false;
+    const text = data.response || data.result || data.message || 'Action completed on workstation.';
+
+    appendMessage(text, 'drax', {
+      success: isSuccess,
+      routed_to: data.routed_to || deviceId,
+      device_id: data.device_id || deviceId,
+      error: data.error
+    });
+
   } catch (e) {
+    removeLoading(loader);
     console.error('[DRAX API] Device dispatch error:', e);
-    let userFriendly = 'DRAX Cloud is unreachable. Please verify the backend is online.';
-    if (e && e.name !== 'TypeError' && e.message && !e.message.includes('Failed to fetch')) {
-      userFriendly = `Connection error: ${e.message}`;
-    }
-    appendMessage(`Error: ${userFriendly}`, 'system');
+    let isNetwork = e.name === 'TypeError' || String(e.message).includes('Failed to fetch');
+    let errMsg = isNetwork
+      ? 'Unable to reach DRAX Cloud. Check your internet connection or Render backend service.'
+      : `Device dispatch failed: ${e.message}`;
+
+    appendMessage(isNetwork ? 'Network Connection Error' : 'Dispatch Error', 'drax', {
+      success: false,
+      error: {
+        code: isNetwork ? 'NETWORK_UNREACHABLE' : 'CLIENT_EXCEPTION',
+        layer: 'BROWSER',
+        message: errMsg,
+        details: `API Endpoint: ${API_BASE}/command | ${String(e)}`
+      }
+    });
   }
 };
 

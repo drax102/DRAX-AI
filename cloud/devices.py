@@ -189,11 +189,11 @@ class DeviceManager:
         self.pending_requests[request_id] = fut
         return fut
 
-    def resolve_pending_request(self, request_id: str, result: str, success: bool = True):
+    def resolve_pending_request(self, request_id: str, result: str, success: bool = True, error: Optional[Dict[str, Any]] = None):
         """Resolve pending command Future with result from Windows Agent."""
         fut = self.pending_requests.pop(request_id, None)
         if fut and not fut.done():
-            fut.set_result({"result": result, "success": success})
+            fut.set_result({"result": result, "response": result, "success": success, "error": error})
 
 
 device_manager = DeviceManager()

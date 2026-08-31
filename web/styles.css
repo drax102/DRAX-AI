@@ -317,6 +317,65 @@ body {
   color: var(--accent-green);
 }
 
+.msg.error-msg {
+  align-self: flex-start;
+  background: rgba(255, 68, 68, 0.08);
+  border: 1px solid rgba(255, 68, 68, 0.35);
+  color: #ff6b6b;
+}
+
+.msg-header.status-ok {
+  color: #00ff88;
+  font-weight: bold;
+}
+
+.msg-header.status-err {
+  color: #ff4444;
+  font-weight: bold;
+}
+
+.msg-reason {
+  margin-top: 6px;
+  color: #e6f1ff;
+  font-size: 0.9rem;
+}
+
+.msg-details-toggle {
+  margin-top: 8px;
+  color: var(--accent-cyan);
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.8rem;
+}
+
+.msg-details-toggle:hover {
+  text-decoration: underline;
+}
+
+.msg-details-content {
+  display: none;
+  margin-top: 6px;
+  padding: 8px 10px;
+  background: #080c12;
+  border: 1px dashed rgba(0, 243, 255, 0.3);
+  border-radius: 4px;
+  font-size: 0.8rem;
+  color: #8b949e;
+  line-height: 1.6;
+}
+
+.msg-details-content.active {
+  display: block;
+}
+
+.msg.loading-msg {
+  align-self: flex-start;
+  background: rgba(0, 243, 255, 0.05);
+  border: 1px dashed rgba(0, 243, 255, 0.3);
+  color: var(--accent-cyan);
+  font-style: italic;
+}
+
 .msg.system {
   align-self: center;
   background: transparent;

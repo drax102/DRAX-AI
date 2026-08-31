@@ -77,7 +77,11 @@ def test_remote_command_result_future():
 
     device_manager.resolve_pending_request(req_id, "Opening Spotify.", success=True)
     assert fut.done()
-    assert fut.result() == {"result": "Opening Spotify.", "success": True}
+    res = fut.result()
+    assert res["result"] == "Opening Spotify."
+    assert res["response"] == "Opening Spotify."
+    assert res["success"] is True
+    assert res["error"] is None
 
 
 def test_offline_detection():
@@ -234,3 +238,22 @@ def test_single_source_of_truth_status():
     assert target["online"] is True
     assert target["status"] == "online"
     assert target["telemetry"]["cpu_percent"] == 25.0
+
+
+def test_structured_offline_error_response():
+    """Verify command routing returns structured AGENT_OFFLINE error when no agent is online."""
+    device_manager.device_sockets.clear()
+    resp = client.post("/command", json={"command": "open spotify"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["success"] is False
+    assert data["error"] is not None
+    assert data["error"]["code"] == "AGENT_OFFLINE"
+    assert data["error"]["layer"] == "WINDOWS AGENT"
+    assert "No Windows Agent is connected" in data["response"]
+
+
+def test_invalid_empty_command():
+    """Verify empty command returns 400."""
+    resp = client.post("/command", json={"command": "   "})
+    assert resp.status_code == 400
