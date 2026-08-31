@@ -15,7 +15,7 @@ from backend.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-_DB_PATH = settings.resolve_path("data/drax.db")
+_DB_PATH = os.getenv("DRAX_DB_PATH", settings.resolve_path("data/drax.db"))
 _db_lock = threading.Lock()
 
 

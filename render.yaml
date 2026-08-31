@@ -4,7 +4,7 @@ services:
     env: python
     region: oregon
     plan: free
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r cloud/requirements.txt
     startCommand: uvicorn cloud.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
@@ -13,3 +13,5 @@ services:
         value: production
       - key: CORS_ORIGINS
         value: "*"
+      - key: DRAX_DB_PATH
+        value: /tmp/drax.db
