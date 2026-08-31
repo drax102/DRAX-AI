@@ -194,11 +194,15 @@ function initChat() {
       console.log('[DRAX API] Executing command:', cmd, '-> Endpoint:', `${API_BASE}/command`);
       const resp = await fetch(`${API_BASE}/command`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
         body: JSON.stringify({ command: cmd })
       });
+
       if (!resp.ok) {
-        let errDetail = `Server returned status ${resp.status} (${resp.statusText})`;
+        let errDetail = `Server error (HTTP ${resp.status})`;
         try {
           const errData = await resp.json();
           if (errData.detail) errDetail = errData.detail;
@@ -208,14 +212,24 @@ function initChat() {
         appendMessage(`Error: ${errDetail}`, 'drax');
         return;
       }
-      const data = await resp.json();
+
+      let data;
+      try {
+        data = await resp.json();
+      } catch (jsonErr) {
+        console.error('[DRAX API] Invalid JSON response:', jsonErr);
+        appendMessage('Error: Received invalid JSON response from DRAX Cloud API.', 'drax');
+        return;
+      }
+
       console.log('[DRAX API] Response received:', data);
-      appendMessage(data.response || 'Executed successfully.', 'drax');
+      const reply = data.response || data.result || data.message || 'Executed successfully.';
+      appendMessage(reply, 'drax');
     } catch (err) {
       console.error('[DRAX API] Command connection error:', err);
-      let userFriendly = err.message || 'Network connection failed.';
-      if (err.name === 'TypeError' && String(err.message).includes('Failed to fetch')) {
-        userFriendly = 'Could not reach DRAX Cloud API. Please verify the backend is online.';
+      let userFriendly = 'DRAX Cloud is unreachable. Please verify the backend is online.';
+      if (err && err.name !== 'TypeError' && err.message && !err.message.includes('Failed to fetch')) {
+        userFriendly = `Connection error: ${err.message}`;
       }
       appendMessage(`Error: ${userFriendly}`, 'system');
     }
@@ -352,11 +366,14 @@ window.executeFromDevice = async function(cmd, deviceId = null) {
     console.log('[DRAX API] Dispatching command for device:', deviceId, 'cmd:', cmd);
     const resp = await fetch(`${API_BASE}/command`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
       body: JSON.stringify({ command: cmd, device_id: deviceId })
     });
     if (!resp.ok) {
-      let errDetail = `Server returned status ${resp.status}`;
+      let errDetail = `Server error (HTTP ${resp.status})`;
       try {
         const errJson = await resp.json();
         if (errJson.detail) errDetail = errJson.detail;
@@ -366,14 +383,22 @@ window.executeFromDevice = async function(cmd, deviceId = null) {
       appendMessage(`Error: ${errDetail}`, 'drax');
       return;
     }
-    const data = await resp.json();
+    let data;
+    try {
+      data = await resp.json();
+    } catch (jsonErr) {
+      console.error('[DRAX API] Invalid JSON response:', jsonErr);
+      appendMessage('Error: Received invalid JSON response from DRAX Cloud API.', 'drax');
+      return;
+    }
     console.log('[DRAX API] Device command response:', data);
-    appendMessage(data.response || 'Action completed on workstation.', 'drax');
+    const reply = data.response || data.result || data.message || 'Action completed on workstation.';
+    appendMessage(reply, 'drax');
   } catch (e) {
     console.error('[DRAX API] Device dispatch error:', e);
-    let userFriendly = e.message || 'Device dispatch failed.';
-    if (e.name === 'TypeError' && String(e.message).includes('Failed to fetch')) {
-      userFriendly = 'Could not reach DRAX Cloud API. Please verify the backend is online.';
+    let userFriendly = 'DRAX Cloud is unreachable. Please verify the backend is online.';
+    if (e && e.name !== 'TypeError' && e.message && !e.message.includes('Failed to fetch')) {
+      userFriendly = `Connection error: ${e.message}`;
     }
     appendMessage(`Error: ${userFriendly}`, 'system');
   }

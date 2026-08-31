@@ -178,9 +178,10 @@ class DeviceManager:
         """Create a Future to wait for a command result from a Windows Agent."""
         try:
             loop = asyncio.get_running_loop()
-            fut = loop.create_future()
         except RuntimeError:
-            fut = asyncio.Future()
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        fut = loop.create_future()
         self.pending_requests[request_id] = fut
         return fut
 
