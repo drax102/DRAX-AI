@@ -147,15 +147,18 @@ dist/DraxAI/
 1. Fork or push this repository to GitHub.
 2. In the [Render Dashboard](https://dashboard.render.com), create a **New +** $\to$ **Blueprint** service.
 3. Select this repository. Render will automatically read `render.yaml` and configure:
-   - Build Command: `pip install -r requirements.txt`
+   - Build Command: `pip install -r cloud/requirements.txt`
    - Start Command: `uvicorn cloud.main:app --host 0.0.0.0 --port $PORT`
-4. The service will be live at `https://<service-name>.onrender.com`.
+4. The service will be live at `https://drax-cloud-api.onrender.com`.
 
 ### 2. Web Dashboard (Vercel Deployment)
 1. In the [Vercel Dashboard](https://vercel.com), import this repository.
-2. Root Directory: `./` (Vercel automatically detects `vercel.json` and routes to `web/`).
-3. Set Environment Variable: `VITE_API_URL=https://<your-render-service>.onrender.com`.
+2. Deployment Options:
+   - **Recommended**: Set **Root Directory** to `web`, Framework Preset to **Other**, Build Command to *(empty)*, Output Directory to `.`.
+   - **Root Directory `./`**: Vercel uses [vercel.json](vercel.json) to automatically route requests to `web/`.
+3. The dashboard connects to `https://drax-cloud-api.onrender.com` by default.
 4. Deploy.
+
 
 ### 3. Device Pairing
 1. On your Windows PC, right-click the Drax tray icon and click **🔗 Show Device Pairing Code** $\to$ you will receive a code (e.g. `DRAX-7K92`).

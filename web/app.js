@@ -1,6 +1,6 @@
 // Drax AI Web Dashboard Controller (Production & Cloud Ready)
 
-// Dynamic API URL Resolution (Priority: URL query ?api= -> localStorage -> window.ENV -> window.location.origin -> fallback)
+// Dynamic API URL Resolution (Priority: URL query ?api= -> localStorage -> window.DRAX_API_URL -> window.__DRAX_API_URL__ -> localhost -> default Render Cloud backend)
 function getApiBase() {
   const urlParams = new URLSearchParams(window.location.search);
   const paramApi = urlParams.get('api');
@@ -12,17 +12,22 @@ function getApiBase() {
   const stored = localStorage.getItem('drax_api_url');
   if (stored) return stored.replace(/\/$/, '');
 
+  if (window.DRAX_API_URL) return window.DRAX_API_URL.replace(/\/$/, '');
   if (window.__DRAX_API_URL__) return window.__DRAX_API_URL__.replace(/\/$/, '');
 
-  if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && window.location.protocol.startsWith('http')) {
-    // If hosted on a static domain without local API, default to origin if same host or stored
-    return window.location.origin;
+  // If accessed locally in development alongside local backend
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    return window.location.port && window.location.port !== '80'
+      ? `${window.location.protocol}//${window.location.hostname}:${window.location.port}`
+      : 'http://127.0.0.1:8765';
   }
 
-  return 'http://127.0.0.1:8765';
+  // Production Render Cloud Backend
+  return 'https://drax-cloud-api.onrender.com';
 }
 
 let API_BASE = getApiBase();
+
 
 document.addEventListener('DOMContentLoaded', () => {
   initTabs();

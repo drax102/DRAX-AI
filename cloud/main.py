@@ -37,7 +37,11 @@ logger = get_logger(__name__)
 
 # Environment configurations
 DRAX_ENV = os.getenv("DRAX_ENV", "production")
-ALLOWED_ORIGINS = os.getenv("CORS_ORIGINS", "*").split(",")
+raw_origins = os.getenv("CORS_ORIGINS", "*")
+if raw_origins == "*" or DRAX_ENV == "development":
+    ALLOWED_ORIGINS = ["*"]
+else:
+    ALLOWED_ORIGINS = [orig.strip() for orig in raw_origins.split(",") if orig.strip()]
 
 app = FastAPI(
     title="DRAX AI Public Cloud API",
@@ -45,23 +49,16 @@ app = FastAPI(
     description="Public Cloud API & Device Orchestrator for DRAX AI",
 )
 
-# Configure CORS
-if DRAX_ENV == "development" or "*" in ALLOWED_ORIGINS:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-else:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=ALLOWED_ORIGINS,
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "DELETE", "PUT", "OPTIONS"],
-        allow_headers=["*"],
-    )
+# Configure CORS (supports explicit origins + all Vercel deployment domains)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=r"https://.*\.vercel\.app" if "*" not in ALLOWED_ORIGINS else None,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 
 # ─── Data Schemas ────────────────────────────────────────────────────────────
