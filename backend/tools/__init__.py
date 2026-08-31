@@ -1,22 +1,18 @@
 """
-backend/tools/__init__.py — Automatically imports and registers all tool modules.
+backend/tools/__init__.py — Tool registry orchestrator.
+Loads platform-independent cloud tools everywhere, and Windows desktop tools when running on Windows.
 """
 
+import sys
 from backend.agent.tool_registry import registry
-from backend.tools import (
-    app_tools,
-    browser_tools,
-    task_tools,
-    reminder_tools,
-    alarm_tools,
-    finance_tools,
-    news_tools,
-    weather_tools,
-    media_tools,
-    screen_tools,
-    file_tools,
-    system_tools,
-    knowledge_tools,
-)
+import backend.tools.cloud_tools
+
+# On Windows desktop, also register Windows-specific computer control tools
+if sys.platform == "win32":
+    try:
+        import backend.tools.windows_tools
+    except Exception as e:
+        import logging
+        logging.getLogger("drax").warning(f"Windows desktop tools not fully loaded: {e}")
 
 __all__ = ["registry"]

@@ -4,7 +4,12 @@ Supports launch, safe termination (close_app), index rebuilding, and running pro
 """
 
 import os
-import psutil
+try:
+    import psutil
+    HAS_PSUTIL = True
+except ImportError:
+    HAS_PSUTIL = False
+
 from backend.agent.tool_registry import register_tool
 from backend.core.app_executor import open_app as executor_open_app, find_app_match
 from backend.core.app_indexer import scan_and_rebuild_index, get_app_index
@@ -35,6 +40,9 @@ def open_app(app_name: str) -> str:
     category="applications",
 )
 def close_app(app_name: str) -> str:
+    if not HAS_PSUTIL:
+        return "Process inspection requires psutil (available on Windows Agent)."
+
     clean_name = app_name.lower().strip()
     # Remove trigger words
     for w in ["close", "exit", "quit", "terminate", "kill", "the", "app"]:
@@ -62,39 +70,45 @@ def close_app(app_name: str) -> str:
             p.terminate()
             closed_count += 1
         except Exception as e:
-            logger.warning(f"Could not terminate process {p.pid}: {e}")
+            logger.warning(f"Could not terminate PID {p.pid}: {e}")
 
-    return f"Closed {closed_count} process(es) related to {clean_name.capitalize()}."
+    return f"Closed {closed_count} instance(s) matching '{clean_name}'."
+
+
+@register_tool(
+    name="list_running_apps",
+    description="List active user-facing applications currently running on the system.",
+    parameters={},
+    risk_level="low",
+    category="applications",
+)
+def list_running_apps() -> str:
+    if not HAS_PSUTIL:
+        return "Process inspection requires psutil (available on Windows Agent)."
+
+    running = []
+    for proc in psutil.process_iter(["name", "exe"]):
+        try:
+            name = proc.info["name"]
+            exe = proc.info["exe"]
+            if exe and not exe.startswith(r"C:\Windows\System32"):
+                if name and name not in running:
+                    running.append(name)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+
+    if not running:
+        return "No non-system applications currently detected."
+    return "Running applications:\n- " + "\n- ".join(sorted(running)[:15])
 
 
 @register_tool(
     name="rebuild_app_index",
-    description="Scan the system (Start Menu, Registry, UWP Store Apps) and rebuild the application database.",
+    description="Rescan the system and rebuild the index of installed applications.",
     parameters={},
     risk_level="low",
     category="applications",
 )
 def rebuild_app_index() -> str:
     apps = scan_and_rebuild_index()
-    return f"Application database successfully rebuilt with {len(apps)} applications."
-
-
-@register_tool(
-    name="list_running_apps",
-    description="List active visible applications running on the system.",
-    parameters={},
-    risk_level="low",
-    category="applications",
-)
-def list_running_apps() -> str:
-    apps = set()
-    for proc in psutil.process_iter(["name", "exe"]):
-        try:
-            name = proc.info["name"]
-            if name and name.endswith(".exe") and not name.lower().startswith(("svchost", "system", "registry", "dllhost")):
-                apps.add(name.replace(".exe", "").capitalize())
-        except Exception:
-            continue
-
-    top_apps = sorted(list(apps))[:15]
-    return f"Active applications: {', '.join(top_apps)}"
+    return f"Application index rebuilt successfully. Discovered {len(apps)} installed applications."

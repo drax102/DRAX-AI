@@ -3,6 +3,7 @@ system_controller.py — Safe system control actions (telemetry, volume, system 
 """
 
 import os
+import sys
 import subprocess
 from backend.core.config import settings
 from backend.core.logger import get_logger
@@ -55,18 +56,24 @@ def handle_system_command(command: str) -> str | tuple[str, str]:
 
 
 def execute_shutdown() -> str:
+    if sys.platform != "win32":
+        return "Shutdown is only supported on Windows host."
     logger.warning("Executing system shutdown")
     os.system("shutdown /s /t 10")
     return "Shutting down the system in 10 seconds."
 
 
 def execute_restart() -> str:
+    if sys.platform != "win32":
+        return "Restart is only supported on Windows host."
     logger.warning("Executing system restart")
     os.system("shutdown /r /t 10")
     return "Restarting the system in 10 seconds."
 
 
 def execute_lock() -> str:
+    if sys.platform != "win32":
+        return "Workstation lock is only supported on Windows host."
     logger.info("Executing system lock")
     os.system("rundll32.exe user32.dll,LockWorkStation")
     return "Locking the workstation."

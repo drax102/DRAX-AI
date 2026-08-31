@@ -4,7 +4,13 @@ screen_tools.py — Screen capture and awareness tools.
 
 import os
 from datetime import datetime
-from PIL import ImageGrab
+
+try:
+    from PIL import ImageGrab
+    HAS_IMAGEGRAB = True
+except Exception:
+    HAS_IMAGEGRAB = False
+
 from backend.agent.tool_registry import register_tool
 from backend.core.config import settings
 from backend.core.logger import get_logger
@@ -20,6 +26,8 @@ logger = get_logger(__name__)
     category="screen",
 )
 def take_screenshot() -> str:
+    if not HAS_IMAGEGRAB:
+        return "Screenshot capture is only supported on local desktop environments."
     try:
         shot = ImageGrab.grab()
         save_dir = settings.resolve_path("logs/screenshots")
@@ -41,6 +49,8 @@ def take_screenshot() -> str:
     category="screen",
 )
 def screen_read() -> str:
+    if not HAS_IMAGEGRAB:
+        return "Screen reading is only supported on local desktop environments."
     try:
         shot = ImageGrab.grab()
         width, height = shot.size

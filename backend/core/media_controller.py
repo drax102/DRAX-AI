@@ -23,6 +23,9 @@ KEYEVENTF_KEYUP = 0x0002
 
 def send_media_key(vk_code: int):
     """Directly post hardware virtual key event to Windows OS."""
+    if not hasattr(ctypes, "windll"):
+        logger.info(f"Hardware media key 0x{vk_code:02X} posted (simulation on non-Windows host).")
+        return
     try:
         user32 = ctypes.windll.user32
         # Key down
