@@ -305,12 +305,56 @@ function initChat() {
       }
 
       console.log('[DRAX API] Response received:', data);
+
+      // Async command handling: poll status if in progress
+      if (data.status === 'dispatched' || data.status === 'executing') {
+        const cmdId = data.command_id || data.request_id;
+        const initText = 'Sending to Windows Agent...';
+        const msgEl = appendMessage(initText, 'drax', {
+          success: true,
+          routed_to: data.routed_to || data.device_id,
+          device_id: data.device_id,
+        });
+
+        if (cmdId) {
+          let pollAttempts = 0;
+          const maxPollAttempts = 15; // up to 12s
+          const pollTimer = setInterval(async () => {
+            pollAttempts++;
+            try {
+              const pollResp = await fetch(`${API_BASE}/commands/${encodeURIComponent(cmdId)}`, {
+                headers: { 'Accept': 'application/json' }
+              });
+              if (pollResp.ok) {
+                const pollData = await pollResp.json();
+                if (pollData.status === 'success' || pollData.status === 'failed') {
+                  clearInterval(pollTimer);
+                  const isDoneSuccess = pollData.status === 'success';
+                  const finalText = pollData.message || pollData.result || pollData.response || (isDoneSuccess ? 'Action executed successfully.' : 'Action failed on device.');
+                  updateMessage(msgEl, finalText, isDoneSuccess, {
+                    routed_to: pollData.device_id || 'windows_agent',
+                    device_id: pollData.device_id,
+                    error: pollData.error,
+                  });
+                }
+              }
+            } catch (pErr) {
+              console.warn('[DRAX API] Status poll warning:', pErr);
+            }
+            if (pollAttempts >= maxPollAttempts) {
+              clearInterval(pollTimer);
+            }
+          }, 800);
+        }
+        return;
+      }
+
       const isSuccess = data.success !== false;
-      const text = data.response || data.result || data.message || 'Executed successfully.';
+      const text = data.message || data.result || data.response || (isSuccess ? 'Executed successfully.' : 'Action failed.');
 
       appendMessage(text, 'drax', {
         success: isSuccess,
-        routed_to: data.routed_to,
+        routed_to: data.routed_to || data.device_id || data.source,
         device_id: data.device_id,
         error: data.error
       });
@@ -392,24 +436,19 @@ function initChat() {
   }
 }
 
-function appendMessage(text, type, meta = null) {
-  const container = document.getElementById('chat-messages');
-  if (!container) return;
-  const div = document.createElement('div');
-  div.className = `msg ${type}`;
-
+function renderMessageHtml(text, meta = null) {
   if (meta && typeof meta === 'object') {
     const isSuccess = meta.success !== false;
     const icon = isSuccess ? '✓' : '✕';
     const statusClass = isSuccess ? 'status-ok' : 'status-err';
-    if (!isSuccess) div.classList.add('error-msg');
 
     let html = `<div class="msg-header ${statusClass}"><strong>${icon}</strong> ${escapeHtml(text)}</div>`;
 
     if (meta.error) {
       const err = meta.error;
-      if (err.message && err.message !== text) {
-        html += `<div class="msg-reason"><strong>Reason:</strong> ${escapeHtml(err.message)}</div>`;
+      const errReason = typeof err === 'string' ? err : (err.message || text);
+      if (errReason && errReason !== text) {
+        html += `<div class="msg-reason"><strong>Reason:</strong> ${escapeHtml(errReason)}</div>`;
       }
 
       const detailId = `detail_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
@@ -425,13 +464,35 @@ function appendMessage(text, type, meta = null) {
         </div>
       `;
     }
-    div.innerHTML = html;
+    return { html, isSuccess };
   } else {
-    div.innerText = text;
+    return { html: escapeHtml(text), isSuccess: true };
   }
+}
+
+function appendMessage(text, type, meta = null) {
+  const container = document.getElementById('chat-messages');
+  if (!container) return null;
+  const div = document.createElement('div');
+  div.className = `msg ${type}`;
+
+  const { html, isSuccess } = renderMessageHtml(text, meta);
+  if (!isSuccess) div.classList.add('error-msg');
+  div.innerHTML = html;
 
   container.appendChild(div);
   container.scrollTop = container.scrollHeight;
+  return div;
+}
+
+function updateMessage(div, text, isSuccess, meta = null) {
+  if (!div) return;
+  const { html, isSuccess: ok } = renderMessageHtml(text, { ...(meta || {}), success: isSuccess });
+  if (!ok) div.classList.add('error-msg');
+  else div.classList.remove('error-msg');
+  div.innerHTML = html;
+  const container = document.getElementById('chat-messages');
+  if (container) container.scrollTop = container.scrollHeight;
 }
 
 // ── Devices Tab ────────────────────────────────────────────────────────────
@@ -607,8 +668,52 @@ window.executeFromDevice = async function(cmd, deviceId = null) {
     }
 
     console.log('[DRAX API] Device command response:', data);
+
+    // Async polling
+    if (data.status === 'dispatched' || data.status === 'executing') {
+      const cmdId = data.command_id || data.request_id;
+      const initText = 'Sending to Windows Agent...';
+      const msgEl = appendMessage(initText, 'drax', {
+        success: true,
+        routed_to: data.routed_to || deviceId,
+        device_id: data.device_id || deviceId,
+      });
+
+      if (cmdId) {
+        let pollAttempts = 0;
+        const maxPollAttempts = 15;
+        const pollTimer = setInterval(async () => {
+          pollAttempts++;
+          try {
+            const pollResp = await fetch(`${API_BASE}/commands/${encodeURIComponent(cmdId)}`, {
+              headers: { 'Accept': 'application/json' }
+            });
+            if (pollResp.ok) {
+              const pollData = await pollResp.json();
+              if (pollData.status === 'success' || pollData.status === 'failed') {
+                clearInterval(pollTimer);
+                const isDoneSuccess = pollData.status === 'success';
+                const finalText = pollData.message || pollData.result || pollData.response || (isDoneSuccess ? 'Action executed successfully.' : 'Action failed on device.');
+                updateMessage(msgEl, finalText, isDoneSuccess, {
+                  routed_to: pollData.device_id || deviceId || 'windows_agent',
+                  device_id: pollData.device_id || deviceId,
+                  error: pollData.error,
+                });
+              }
+            }
+          } catch (pErr) {
+            console.warn('[DRAX API] Status poll warning:', pErr);
+          }
+          if (pollAttempts >= maxPollAttempts) {
+            clearInterval(pollTimer);
+          }
+        }, 800);
+      }
+      return;
+    }
+
     const isSuccess = data.success !== false;
-    const text = data.response || data.result || data.message || 'Action completed on workstation.';
+    const text = data.message || data.result || data.response || 'Action completed on workstation.';
 
     appendMessage(text, 'drax', {
       success: isSuccess,

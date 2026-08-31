@@ -71,13 +71,17 @@ app = FastAPI(
 # Configure CORS for all web clients (Vercel, custom domains, localhost)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS if "*" not in ALLOWED_ORIGINS else ["*"],
-    allow_origin_regex=r"^https?://.*" if "*" in ALLOWED_ORIGINS else r"https://.*\.vercel\.app.*|http://localhost:\d+|http://127\.0\.0\.1:\d+",
+    allow_origins=["*"],
     allow_credentials=False,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
+    allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
 )
+
+
+@app.options("/{full_path:path}")
+def options_preflight_catchall(full_path: str):
+    return JSONResponse(status_code=200, content={"status": "ok"})
 
 
 @app.exception_handler(Exception)
@@ -237,20 +241,24 @@ async def execute_command(payload: CommandPayload):
 
     # 0. Idempotency Check: Return existing result if command_id was already executed
     existing_cmd = device_registry.get_command(req_id)
-    if existing_cmd and existing_cmd.status in ["success", "executing"]:
+    if existing_cmd and existing_cmd.status in ["success", "executing", "dispatched"]:
         logger.info(f"IDEMPOTENCY: Returning existing state for duplicate command_id='{req_id}'")
+        is_succ = (existing_cmd.status in ["success", "executing", "dispatched"])
         return {
+            "success": is_succ,
+            "request_id": req_id,
             "command_id": req_id,
+            "device_id": existing_cmd.device_id,
+            "message": existing_cmd.result,
+            "result": existing_cmd.result,
+            "response": existing_cmd.result,
+            "source": "windows_agent" if existing_cmd.device_id else "cloud",
             "status": existing_cmd.status,
             "intent": existing_cmd.intent,
-            "device_id": existing_cmd.device_id,
-            "result": existing_cmd.result,
-            "timestamp": existing_cmd.updated_at or ts_now,
-            "success": existing_cmd.status == "success",
             "command": existing_cmd.command or cmd,
-            "response": existing_cmd.result,
-            "routed_to": existing_cmd.device_id,
+            "routed_to": existing_cmd.device_id or "cloud",
             "error": existing_cmd.error,
+            "timestamp": existing_cmd.updated_at or ts_now,
         }
 
     # 1. Plan the request into ActionSteps
@@ -289,33 +297,44 @@ async def execute_command(payload: CommandPayload):
                 res_url = f"Web search for '{q}': https://www.google.com/search?q={urllib.parse.quote(q)}"
                 device_registry.update_command_status(req_id, status="success", result=res_url)
                 return {
+                    "success": True,
+                    "request_id": req_id,
                     "command_id": req_id,
+                    "device_id": None,
+                    "message": res_url,
+                    "result": res_url,
+                    "response": res_url,
+                    "source": "cloud",
                     "status": "success",
                     "intent": first_step.tool_name,
-                    "device_id": None,
-                    "result": res_url,
-                    "timestamp": ts_now,
-                    "success": True,
                     "command": cmd,
-                    "response": res_url,
                     "routed_to": "cloud",
                     "error": None,
+                    "timestamp": ts_now,
                 }
 
-            unsupported_msg = first_decision.unsupported_message or "No connected device is currently available for this action."
+            unsupported_msg = first_decision.unsupported_message
+            if not unsupported_msg:
+                if first_decision.required_capability in ["apps", "media", "system", "volume", "screen", "files", "browser", "telemetry"]:
+                    unsupported_msg = "No Windows Agent is connected online to execute local PC actions. Windows Agent is offline."
+                else:
+                    unsupported_msg = "No connected device is currently available for this action."
+
             err_code = "AGENT_OFFLINE" if first_decision.required_capability in ["apps", "media", "system", "volume", "screen", "files", "browser", "telemetry"] else "CAPABILITY_UNAVAILABLE"
             err_layer = "WINDOWS AGENT" if err_code == "AGENT_OFFLINE" else "DEVICE_ROUTER"
             device_registry.update_command_status(req_id, status="failed", result=unsupported_msg, error=unsupported_msg)
             return {
+                "success": False,
+                "request_id": req_id,
                 "command_id": req_id,
+                "device_id": None,
+                "message": unsupported_msg,
+                "result": unsupported_msg,
+                "response": unsupported_msg,
+                "source": "windows_agent",
                 "status": "failed",
                 "intent": first_step.tool_name,
-                "device_id": None,
-                "result": unsupported_msg,
-                "timestamp": ts_now,
-                "success": False,
                 "command": cmd,
-                "response": unsupported_msg,
                 "routed_to": None,
                 "error": {
                     "code": err_code,
@@ -323,6 +342,7 @@ async def execute_command(payload: CommandPayload):
                     "message": unsupported_msg,
                     "details": f"Required capability: '{first_decision.required_capability}'. Connect a compatible device.",
                 },
+                "timestamp": ts_now,
             }
 
         dev_id = first_decision.device_id
@@ -342,10 +362,10 @@ async def execute_command(payload: CommandPayload):
                 "command": cmd,
                 "steps": [{"tool": s.tool_name, "args": s.args} for s in plan.steps],
             })
-            # Await asynchronous execution response from device with sensible 4s relay window
+            # Await asynchronous execution response from device with sensible 5s relay window
             try:
-                res_obj = await asyncio.wait_for(fut, timeout=4.0)
-                agent_result = res_obj.get("result") or res_obj.get("response", f"Executed '{cmd}' on device.")
+                res_obj = await asyncio.wait_for(fut, timeout=5.0)
+                agent_result = res_obj.get("result") or res_obj.get("message") or res_obj.get("response", f"Executed '{cmd}' on device.")
                 agent_success = res_obj.get("success", True)
                 agent_error = res_obj.get("error")
 
@@ -357,50 +377,58 @@ async def execute_command(payload: CommandPayload):
                 )
 
                 return {
+                    "success": agent_success,
+                    "request_id": req_id,
                     "command_id": req_id,
+                    "device_id": dev_id,
+                    "message": agent_result,
+                    "result": agent_result,
+                    "response": agent_result,
+                    "source": "windows_agent",
                     "status": "success" if agent_success else "failed",
                     "intent": primary_intent,
-                    "device_id": dev_id,
-                    "result": agent_result,
-                    "timestamp": ts_now,
-                    "success": agent_success,
                     "command": cmd,
-                    "response": agent_result,
                     "routed_to": dev_id,
                     "error": agent_error,
+                    "timestamp": ts_now,
                 }
             except asyncio.TimeoutError:
                 # Fast asynchronous acknowledgement: Action has been dispatched and is executing
                 logger.info(f"RELAY ACKNOWLEDGED: command_id={req_id} device={dev_id} dispatched and executing.")
-                ack_msg = f"Dispatched '{cmd}' to device ({dev_id}). Action is executing."
+                ack_msg = "Command sent to Windows Agent."
                 return {
-                    "command_id": req_id,
-                    "status": "executing",
-                    "intent": primary_intent,
-                    "device_id": dev_id,
-                    "result": ack_msg,
-                    "timestamp": ts_now,
                     "success": True,
-                    "command": cmd,
+                    "status": "dispatched",
+                    "request_id": req_id,
+                    "command_id": req_id,
+                    "device_id": dev_id,
+                    "message": ack_msg,
+                    "result": ack_msg,
                     "response": ack_msg,
+                    "source": "windows_agent",
+                    "intent": primary_intent,
+                    "command": cmd,
                     "routed_to": dev_id,
                     "error": None,
+                    "timestamp": ts_now,
                 }
         except Exception as e:
             device_manager.pending_requests.pop(req_id, None)
             logger.error(f"Error dispatching to device '{dev_id}': {e}")
-            err_msg = f"Failed to dispatch to device: {str(e)}"
+            err_msg = f"Failed to dispatch to Windows Agent: {str(e)}"
             device_registry.update_command_status(req_id, status="failed", result=err_msg, error=err_msg)
             return {
+                "success": False,
+                "request_id": req_id,
                 "command_id": req_id,
+                "device_id": dev_id,
+                "message": err_msg,
+                "result": err_msg,
+                "response": err_msg,
+                "source": "windows_agent",
                 "status": "failed",
                 "intent": primary_intent,
-                "device_id": dev_id,
-                "result": err_msg,
-                "timestamp": ts_now,
-                "success": False,
                 "command": cmd,
-                "response": err_msg,
                 "routed_to": dev_id,
                 "error": {
                     "code": "DISPATCH_FAILED",
@@ -408,6 +436,7 @@ async def execute_command(payload: CommandPayload):
                     "message": err_msg,
                     "details": "WebSocket connection failure during dispatch.",
                 },
+                "timestamp": ts_now,
             }
 
     # 4. Otherwise execute cloud-available tools directly via registry
@@ -462,17 +491,47 @@ async def execute_command(payload: CommandPayload):
         error=cloud_error.get("message") if cloud_error else None
     )
     return {
+        "success": not has_error,
+        "request_id": req_id,
         "command_id": req_id,
+        "device_id": None,
+        "message": final_text,
+        "result": final_text,
+        "response": final_text,
+        "source": "cloud",
         "status": "success" if not has_error else "failed",
         "intent": primary_intent,
-        "device_id": None,
-        "result": final_text,
-        "timestamp": ts_now,
-        "success": not has_error,
         "command": cmd,
-        "response": final_text,
         "routed_to": "cloud",
         "error": cloud_error,
+        "timestamp": ts_now,
+    }
+
+
+@app.get("/commands/{command_id}")
+@app.get("/api/commands/{command_id}")
+@app.get("/api/command/{command_id}")
+@app.get("/command/{command_id}")
+def get_command_status_endpoint(command_id: str):
+    """Query current status of an asynchronous command."""
+    rec = device_registry.get_command(command_id)
+    if not rec:
+        raise HTTPException(status_code=404, detail="Command not found.")
+
+    is_success = (rec.status == "success")
+    return {
+        "success": is_success,
+        "request_id": rec.command_id,
+        "command_id": rec.command_id,
+        "status": rec.status,
+        "device_id": rec.device_id,
+        "source": "windows_agent" if rec.device_id else "cloud",
+        "message": rec.result or ("Command sent to Windows Agent." if rec.status in ["queued", "executing", "dispatched"] else "Completed."),
+        "result": rec.result,
+        "response": rec.result,
+        "error": rec.error,
+        "created_at": rec.created_at,
+        "updated_at": rec.updated_at,
     }
 
 

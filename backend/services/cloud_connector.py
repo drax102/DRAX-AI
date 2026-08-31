@@ -241,8 +241,10 @@ class CloudConnector:
                 "device_id": self.device_id,
                 "status": "success" if success else "failed",
                 "success": success,
+                "message": combined_result,
                 "result": combined_result,
                 "response": combined_result,
+                "source": "windows_agent",
                 "error": None if success else combined_result,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }))

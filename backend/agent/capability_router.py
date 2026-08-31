@@ -140,7 +140,7 @@ class CapabilityRouter:
 
         # If capability requires specific device not connected
         if cap in ["apps", "media", "system", "volume", "screen", "files", "browser", "telemetry"]:
-            unsupported_msg = "No Windows Agent is connected. Open Drax AI on your PC and pair this device."
+            unsupported_msg = "No Windows Agent is connected. Windows Agent is offline. Open Drax AI on your PC and pair this device."
         else:
             unsupported_msg = UNSUPPORTED_CAPABILITY_MESSAGES.get(
                 cap,
