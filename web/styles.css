@@ -713,3 +713,359 @@ body {
   text-transform: lowercase;
   font-family: monospace;
 }
+
+/* ── Sales Voice Agent Tab Styles ────────────────────────────────────────── */
+.sales-split-view {
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 20px;
+  height: calc(100vh - 170px);
+}
+
+.sales-dialogue-panel,
+.sales-lead-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  height: 100%;
+}
+
+.sales-header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.sales-session-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(0, 243, 255, 0.08);
+  border: 1px solid rgba(0, 243, 255, 0.25);
+  padding: 4px 10px;
+  border-radius: 14px;
+  font-size: 0.82rem;
+  font-family: monospace;
+  color: var(--accent-cyan);
+}
+
+.sales-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sales-chat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--panel-border);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.sales-agent-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sales-pulse-orb {
+  width: 10px;
+  height: 10px;
+  background-color: var(--accent-cyan);
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--accent-cyan);
+}
+
+.badge-demo {
+  background: rgba(255, 170, 0, 0.15);
+  color: var(--accent-amber);
+  border: 1px solid var(--accent-amber);
+  font-size: 0.7rem;
+  padding: 2px 6px;
+  border-radius: 8px;
+  font-weight: bold;
+  letter-spacing: 0.5px;
+  margin-left: 8px;
+}
+
+.badge-live {
+  background: rgba(0, 255, 136, 0.15);
+  color: var(--accent-green);
+  border: 1px solid var(--accent-green);
+  font-size: 0.7rem;
+  padding: 2px 6px;
+  border-radius: 8px;
+  font-weight: bold;
+  letter-spacing: 0.5px;
+  margin-left: 8px;
+}
+
+.voice-status-text {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.sales-messages-terminal {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sales-input-bar {
+  padding: 10px 14px;
+  border-top: 1px solid var(--panel-border);
+}
+
+/* Right Lead Panel */
+.lead-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.lead-panel-header h3 {
+  font-size: 1.05rem;
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.qual-badge-qualified {
+  background: rgba(0, 255, 136, 0.15);
+  color: var(--accent-green);
+  border: 1px solid var(--accent-green);
+  padding: 3px 9px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: bold;
+}
+
+.qual-badge-inprogress {
+  background: rgba(0, 243, 255, 0.15);
+  color: var(--accent-cyan);
+  border: 1px solid var(--accent-cyan);
+  padding: 3px 9px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: bold;
+}
+
+.qual-badge-disqualified {
+  background: rgba(255, 51, 102, 0.15);
+  color: var(--accent-red);
+  border: 1px solid var(--accent-red);
+  padding: 3px 9px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: bold;
+}
+
+.qual-badge-followup {
+  background: rgba(255, 170, 0, 0.15);
+  color: var(--accent-amber);
+  border: 1px solid var(--accent-amber);
+  padding: 3px 9px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: bold;
+}
+
+.icon-btn.mic-active {
+  background: rgba(255, 51, 102, 0.25) !important;
+  border-color: #ff3366 !important;
+  color: #ff3366 !important;
+  animation: mic-pulse 1.2s infinite ease-in-out;
+  box-shadow: 0 0 14px rgba(255, 51, 102, 0.6) !important;
+}
+
+@keyframes mic-pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+
+#sales-voice-toggle-btn.voice-off {
+  background: rgba(139, 148, 158, 0.12) !important;
+  border-color: #8b949e !important;
+  color: #8b949e !important;
+  box-shadow: none !important;
+}
+
+.score-card-container {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 14px;
+  margin-bottom: 14px;
+}
+
+.score-radial-box {
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  border: 3px solid var(--accent-cyan);
+  box-shadow: 0 0 16px rgba(0, 243, 255, 0.25);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.score-number {
+  font-size: 1.8rem;
+  font-weight: bold;
+  color: var(--accent-cyan);
+  line-height: 1;
+}
+
+.score-label {
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+  margin-top: 3px;
+}
+
+.score-meta-box {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.score-meta-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.intent-high { color: var(--accent-green); font-weight: bold; }
+.intent-medium { color: var(--accent-cyan); font-weight: bold; }
+.intent-low { color: var(--accent-amber); font-weight: bold; }
+.intent-unqualified { color: var(--text-muted); }
+
+.bant-breakdown-box {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 14px;
+}
+
+.bant-breakdown-box h4 {
+  font-size: 0.82rem;
+  color: var(--accent-cyan);
+  margin-bottom: 10px;
+  letter-spacing: 0.5px;
+}
+
+.bant-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.bant-item {
+  background: rgba(13, 18, 28, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.bant-item-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  margin-bottom: 6px;
+}
+
+.bant-bar-bg {
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.bant-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-cyan), var(--accent-green));
+  transition: width 0.4s ease-in-out;
+}
+
+.lead-details-table {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.15);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.82rem;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.detail-label {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.detail-val {
+  color: var(--text-main);
+  text-align: right;
+  max-width: 60%;
+  word-break: break-word;
+}
+
+.lead-reasoning-box {
+  background: rgba(0, 0, 0, 0.3);
+  border-left: 3px solid var(--accent-cyan);
+  padding: 8px 12px;
+  border-radius: 0 6px 6px 0;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+  max-height: 70px;
+  overflow-y: auto;
+}
+
+.reasoning-title {
+  color: var(--accent-cyan);
+  font-weight: bold;
+  display: block;
+  margin-bottom: 3px;
+}
+
+@media (max-width: 860px) {
+  .sales-split-view {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+  .sales-dialogue-panel {
+    height: 480px;
+  }
+}
+

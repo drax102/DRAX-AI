@@ -97,6 +97,11 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.warning(f"WebSocket error: {e}")
 
 
+# Mount Autonomous AI Sales Voice Agent Router (/api/sales)
+from backend.sales_agent.router import sales_router
+api_app.include_router(sales_router)
+
+
 # Mount Web Dashboard static directory if it exists
 _WEB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "web")
 if os.path.isdir(_WEB_DIR):

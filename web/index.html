@@ -17,6 +17,7 @@
       </div>
       <nav class="nav-links">
         <button class="nav-btn active" data-tab="chat"><i class="fa-solid fa-terminal"></i> Command Terminal</button>
+        <button class="nav-btn" data-tab="sales"><i class="fa-solid fa-headset"></i> Sales Voice Agent</button>
         <button class="nav-btn" data-tab="devices"><i class="fa-solid fa-laptop-code"></i> My Devices</button>
         <button class="nav-btn" data-tab="tasks"><i class="fa-solid fa-list-check"></i> Tasks & Agenda</button>
         <button class="nav-btn" data-tab="reminders"><i class="fa-solid fa-clock"></i> Reminders & Alarms</button>
@@ -193,6 +194,170 @@
           </div>
         </div>
       </section>
+
+      <!-- TAB: Autonomous AI Sales Voice Agent -->
+      <section id="tab-sales" class="tab-pane">
+        <div class="panel-header">
+          <div class="sales-header-left">
+            <h2><i class="fa-solid fa-headset" style="color: var(--accent-cyan);"></i> Autonomous AI Sales Voice Agent</h2>
+            <div class="sales-session-badge">
+              <span class="status-indicator" id="sales-session-indicator"></span>
+              <span id="sales-session-label">Session: Initializing...</span>
+            </div>
+          </div>
+          <div class="sales-header-actions">
+            <button id="sales-voice-toggle-btn" class="glow-btn" title="Toggle AI Voice Response">
+              <i class="fa-solid fa-volume-high" id="sales-voice-icon"></i> <span id="sales-voice-label">Voice On</span>
+            </button>
+            <button id="sales-stop-speech-btn" class="icon-btn" title="Stop AI Speaking">
+              <i class="fa-solid fa-stop"></i>
+            </button>
+            <button id="sales-new-session-btn" class="glow-btn">
+              <i class="fa-solid fa-plus"></i> New Session
+            </button>
+          </div>
+        </div>
+
+        <div class="split-view sales-split-view">
+          <!-- Left Column: Voice/Text Sales Dialogue -->
+          <div class="sales-dialogue-panel card">
+            <div class="sales-chat-header">
+              <div class="sales-agent-meta">
+                <span class="sales-pulse-orb"></span>
+                <div>
+                  <strong>DRAX Consultative Voice Assistant</strong>
+                  <span id="sales-model-badge" class="badge-demo">DEMO ENGINE</span>
+                </div>
+              </div>
+              <div id="sales-voice-status" class="voice-status-text">Ready</div>
+            </div>
+
+            <!-- Dialogue Messages Container -->
+            <div class="chat-terminal sales-messages-terminal" id="sales-chat-messages">
+              <div class="msg system">
+                <i class="fa-solid fa-headset"></i> Sales Voice Assistant Ready. Speak via microphone or type to begin qualification.
+              </div>
+            </div>
+
+            <!-- Input Bar -->
+            <div class="chat-input-bar sales-input-bar">
+              <input type="text" id="sales-input" placeholder="Speak via mic or type customer requirements..." autocomplete="off">
+              <button id="sales-mic-btn" class="icon-btn" title="Speak via Microphone">
+                <i class="fa-solid fa-microphone" id="sales-mic-icon"></i>
+              </button>
+              <button id="sales-send-btn" class="glow-btn">Send</button>
+            </div>
+          </div>
+
+          <!-- Right Column: Live Lead Qualification & BANT Scoring Panel -->
+          <div class="sales-lead-panel card">
+            <div class="lead-panel-header">
+              <h3><i class="fa-solid fa-clipboard-check"></i> Live Lead Intelligence</h3>
+              <span id="sales-qual-badge" class="qual-badge-inprogress">IN PROGRESS</span>
+            </div>
+
+            <!-- Overall Lead Score Card -->
+            <div class="score-card-container">
+              <div class="score-radial-box">
+                <div class="score-number" id="lead-score-val">0</div>
+                <div class="score-label">LEAD SCORE / 100</div>
+              </div>
+              <div class="score-meta-box">
+                <div class="score-meta-row">
+                  <span>Buying Intent:</span>
+                  <strong id="lead-intent-val" class="intent-unqualified">Unqualified</strong>
+                </div>
+                <div class="score-meta-row">
+                  <span>Status:</span>
+                  <strong id="lead-status-val">in_progress</strong>
+                </div>
+                <div class="score-meta-row">
+                  <span>Turns Logged:</span>
+                  <strong id="lead-turns-count">0</strong>
+                </div>
+              </div>
+            </div>
+
+            <!-- BANT 4 Pillars Breakdown -->
+            <div class="bant-breakdown-box">
+              <h4>BANT Qualification Rubric (Max 25 pts each)</h4>
+              <div class="bant-grid">
+                <div class="bant-item" id="bant-budget-item">
+                  <div class="bant-item-header">
+                    <span><i class="fa-solid fa-sack-dollar"></i> Budget</span>
+                    <strong id="bant-budget-score">0 / 25</strong>
+                  </div>
+                  <div class="bant-bar-bg"><div class="bant-bar-fill" id="bant-budget-fill" style="width: 0%;"></div></div>
+                </div>
+                <div class="bant-item" id="bant-authority-item">
+                  <div class="bant-item-header">
+                    <span><i class="fa-solid fa-user-shield"></i> Authority</span>
+                    <strong id="bant-authority-score">0 / 25</strong>
+                  </div>
+                  <div class="bant-bar-bg"><div class="bant-bar-fill" id="bant-authority-fill" style="width: 0%;"></div></div>
+                </div>
+                <div class="bant-item" id="bant-need-item">
+                  <div class="bant-item-header">
+                    <span><i class="fa-solid fa-bullseye"></i> Need</span>
+                    <strong id="bant-need-score">0 / 25</strong>
+                  </div>
+                  <div class="bant-bar-bg"><div class="bant-bar-fill" id="bant-need-fill" style="width: 0%;"></div></div>
+                </div>
+                <div class="bant-item" id="bant-timeline-item">
+                  <div class="bant-item-header">
+                    <span><i class="fa-solid fa-calendar-days"></i> Timeline</span>
+                    <strong id="bant-timeline-score">0 / 25</strong>
+                  </div>
+                  <div class="bant-bar-bg"><div class="bant-bar-fill" id="bant-timeline-fill" style="width: 0%;"></div></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Customer Details Table -->
+            <div class="lead-details-table">
+              <div class="detail-row">
+                <span class="detail-label">Customer Name:</span>
+                <span class="detail-val" id="lead-field-name">Not provided</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Company:</span>
+                <span class="detail-val" id="lead-field-company">Not provided</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Email:</span>
+                <span class="detail-val" id="lead-field-email">Not provided</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Phone:</span>
+                <span class="detail-val" id="lead-field-phone">Not provided</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Role:</span>
+                <span class="detail-val" id="lead-field-role">Not provided</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Business Need:</span>
+                <span class="detail-val" id="lead-field-need">Not provided</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Budget Details:</span>
+                <span class="detail-val" id="lead-field-budget">Not provided</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Timeline Details:</span>
+                <span class="detail-val" id="lead-field-timeline">Not provided</span>
+              </div>
+            </div>
+
+            <!-- Score Reasoning -->
+            <div class="lead-reasoning-box">
+              <span class="reasoning-title"><i class="fa-solid fa-circle-info"></i> Score Explanation:</span>
+              <p id="lead-reasoning-text">No evaluation criteria recorded yet.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
     </main>
   </div>
 

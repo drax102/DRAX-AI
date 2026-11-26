@@ -1,307 +1,242 @@
-# Drax AI
+# DRAX AI — Autonomous AI Sales Voice Agent
 
-> An agentic, voice-controlled personal AI assistant for Windows with Cloud Remote Control, Browser Automation, and Multi-Step Execution.
+> An Autonomous Inbound AI Sales Voice Agent and Universal Assistant built on FastAPI, Pydantic, isolated SQLite persistence, explainable BANT lead scoring, and browser-native voice interfaces.
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-Vercel-00f3ff?style=for-the-badge&logo=vercel)](https://draxai-nine.vercel.app)
-[![Cloud API](https://img.shields.io/badge/Cloud%20API-Render-46E3B7?style=for-the-badge&logo=render)](https://drax-cloud-api.onrender.com)
-[![Tests](https://img.shields.io/badge/Tests-52%20Passed-00ff88?style=for-the-badge&logo=pytest)](https://github.com/drax102/DRAX-AI)
+[![Tests](https://img.shields.io/badge/Tests-137%20Passed%20(100%25)-00ff88?style=for-the-badge&logo=pytest)](https://github.com/drax102/DRAX-AI)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.100%2B-009688?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
 
-🚀 **Live Demo:** [https://draxai-nine.vercel.app](https://draxai-nine.vercel.app)  
-☁️ **Cloud API:** [https://drax-cloud-api.onrender.com](https://drax-cloud-api.onrender.com)  
-💻 **GitHub Repository:** [https://github.com/drax102/DRAX-AI](https://github.com/drax102/DRAX-AI)
+---
+
+## 🎯 Problem Statement
+
+Modern enterprise sales organizations face severe bottlenecks in their inbound pipeline:
+- **Delayed SDR Response Times**: B2B buyers expect instant answers. Leads contacting vendors outside standard operating hours often wait 12–48 hours for qualification, causing significant conversion drop-off.
+- **Inconsistent Qualification Standards**: Human sales representatives evaluate Budget, Authority, Need, and Timeline (BANT) subjectively, leading to unvetted leads clogging account executive pipelines.
+- **High Operational Costs**: 24/7 global human coverage is cost-prohibitive for growing software and services companies.
+
+## 💡 Solution Overview
+
+The **DRAX Autonomous AI Sales Voice Agent** provides a 24/7 conversational discovery and lead qualification assistant. Operating directly in modern browsers via native Web Speech APIs (voice input & voice output) or keyboard text, it:
+1. Conducts natural, multi-turn consultative discovery dialogues.
+2. Extracts commercial parameters (name, company, email, phone, role, budget, timeline, authority, and business need) using non-destructive entity merging.
+3. Evaluates prospective clients using a deterministic, transparent **0–100 BANT Lead Scoring Rubric** with human-readable reasoning for every awarded point.
+4. Stores conversation history and lead records in an **isolated SQLite database** (`data/sales_agent.db`), completely decoupled from the existing Drax assistant records.
+5. Runs locally out-of-the-box with a zero-cost deterministic **Demo Engine**, with complete plug-and-play support for any OpenAI-compatible API (OpenAI, Groq, OpenRouter, vLLM).
 
 ---
 
-## 🎙️ Overview
+## ✨ Key Features
 
-**Drax AI** is an open-source, production-ready, Windows-first personal AI assistant built from the ground up for agentic computer control, offline speech recognition, multi-step planning, automated browser actions, and secure cloud connectivity.
-
-### Key Highlights:
-* 🚀 **Cloud-to-Desktop Remote Control** — Control your Windows PC from anywhere via the [Live Web Dashboard](https://draxai-nine.vercel.app) using secure WebSockets.
-* 🎙️ **Natural Voice Interaction** — Hands-free microphone listening and conversational control.
-* 🧠 **Intent Understanding & Planning** — Decomposes complex, multi-clause requests into ordered tool steps.
-* 👂 **"Hey Drax" Wake Word** — Continuous offline Vosk Kaldi speech engine with phonetic Soundex matching.
-* 🖥️ **Windows Application Control** — Deep 6-tier discovery and control across Start Menu, Registry, Program Files, LocalAppData, and UWP Store apps without AppID truncation.
-* 🌐 **Playwright Browser Automation** — Navigates web pages, searches Google/YouTube/GitHub, clicks elements, types input, scrolls, hovers, and extracts page content.
-* 🔎 **Web Search** — Direct search across Google, YouTube, Reddit, Wikipedia, and GitHub.
-* 📈 **Live Stock Information** — Real-time quotes for US stocks, Indian stocks (NSE/BSE), indices (Nifty 50, Sensex), and cryptocurrencies.
-* 📰 **Verified Live News** — Filterable RSS headlines across World, India, AI, Tech, and Business.
-* 🌦️ **Global Weather Forecasts** — Live weather conditions and forecasts via Open-Meteo public API (no API keys required).
-* ⏰ **Tasks & Agenda Management** — Persistent SQLite database (`data/drax.db`) for task CRUD.
-* 🔔 **Natural Language Reminders** — Schedule reminders (*"remind me in 30 minutes"*, *"remind me tomorrow at 8"*) with proactive background alerting.
-* ⏰ **Alarms** — Schedule and cancel alarms (*"set alarm for 7:00 PM"*).
-* 🎵 **Hardware-Level Media Controls** — Windows virtual key events (`VK_MEDIA_PLAY_PAUSE`, `VK_MEDIA_NEXT_TRACK`, `VK_MEDIA_PREV_TRACK`) and Spotify automation.
-* 🔊 **Asynchronous Offline TTS** — Non-blocking voice synthesis via `pyttsx3`.
-* 🤖 **Multi-Step Automation** — Execute compound instructions (*"Open Spotify and play music"*, *"Search AI news and remind me to study at 8 PM"*).
-* ☁️ **Cloud Connectivity & Relay** — FastAPI backend with secure WebSocket relay between cloud clients and the local Windows workstation.
-* 📱 **Public Web Dashboard** — Responsive cyberpunk web client deployed on [Vercel](https://draxai-nine.vercel.app).
-* 📦 **Standalone Windows Executable** — Fully bundled portable executable (`dist/DraxAI/DraxAI.exe`) with all dependencies and offline models included.
+- 🎙️ **Dual-Modality Voice & Text Interface**: Full hands-free conversation using browser Web Speech API (`SpeechRecognition` for STT with visual pulsing, `SpeechSynthesis` for natural TTS response playback).
+- 🧠 **Consultative Sales Orchestrator**: Directs the flow of conversation logically, asking single focused follow-up questions without overwhelming the prospect.
+- 📊 **Live Lead Intelligence Panel**: Real-time radial score badge (0–100), 4 animated BANT progress bars (/25 each), and a dynamic customer detail card.
+- ⚖️ **Explainable BANT Scoring Engine**:
+  - **Budget (0–25)**: Evaluates numeric amounts ($\ge \$10\text{k} \to 25$, $\$2\text{k}\text{--}\$10\text{k} \to 18$, starter $\to 8$, zero budget $\to 0$).
+  - **Authority (0–25)**: Sole decision-makers $\to 25$, evaluation committee / co-decision $\to 18$, influencers $\to 10$. Job title alone is never assumed to be decision authority.
+  - **Need (0–25)**: High-impact automation/call center pain point $\to 25$, operational/efficiency/security goal $\to 15$, general curiosity $\to 10$, no need $\to 0$.
+  - **Timeline (0–25)**: Urgent / $< 1$ month $\to 25$, near-term / 1–3 months / next quarter $\to 18$, medium-term / 3–6 months $\to 10$, indefinite $\to 5$, unmentioned $\to 0$.
+- 🛡️ **Enterprise Security & XSS Immunity**: Parameterized SQL queries, sanitized DOM text rendering, 128-bit CSPRNG session IDs (`sales_[0-9a-f]{32}`), and sensitive token redaction in logs.
+- 💾 **Strict Storage Isolation**: Dedicated SQLite database (`data/sales_agent.db`) keeping sales records completely separate from the core desktop assistant (`data/drax.db`).
+- 🔄 **Pluggable LLM Backend**: Seamlessly toggles between the local deterministic `DemoLLMProvider` and cloud `OpenAICompatibleProvider`.
 
 ---
 
-## 🏗️ System Architecture
+## 🏗️ Architecture Overview
 
-```text
-                  Web Dashboard (Vercel)
-                             ↓  (HTTPS / REST)
-              FastAPI Cloud Backend (Render)
-                             ↓  (Secure WebSockets WSS)
-                 Windows Drax Agent (Local PC)
-                             ↓
-                     Local PC Actions
-     (Apps, Playwright Automation, Media Keys, OS)
+```mermaid
+flowchart LR
+    Customer["Prospect / Client\n(Voice or Text)"]
+    WebUI["Browser Dashboard\n(web/index.html & app.js)"]
+    FastAPI["FastAPI REST API\n(/api/sales)"]
+    Orchestrator["Sales Orchestrator\n(conversation.py)"]
+    LLM["LLM Provider Layer\n(Demo or Cloud LLM)"]
+    Qualifier["Lead Qualifier\n(lead_qualifier.py)"]
+    Scorer["BANT Scoring Engine\n(lead_scoring.py)"]
+    SalesDB[("Isolated SQLite DB\ndata/sales_agent.db")]
+
+    Customer <-->|Spoken Audio / Text| WebUI
+    WebUI <-->|JSON REST Payload| FastAPI
+    FastAPI <--> Orchestrator
+    Orchestrator <--> LLM
+    Orchestrator <--> Qualifier
+    Qualifier <--> Scorer
+    Qualifier <--> SalesDB
 ```
 
-### Complete End-to-End Pipeline:
+For full architectural diagrams and data flows, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+---
+
+## 📚 Project Documentation Index
+
+- 🏛️ [System Architecture & Data Flows](docs/ARCHITECTURE.md): Detailed component breakdown, Mermaid sequence diagrams, and database isolation.
+- 📋 [One-Page Project Report](docs/PROJECT_REPORT.md): Executive summary prepared for hiring manager review.
+- 📈 [Scalability, Security & Cost Roadmap](docs/SCALABILITY.md): 100k-user architectural proposal, security architecture, and mathematical cost model.
+- 🎯 [Technical Interview Preparation](docs/INTERVIEW_PREPARATION.md): 14 concise, speakable technical answers to anticipated interview questions.
+- 🎬 [Live Demonstration Script](docs/DEMO_GUIDE.md): 3–5 minute step-by-step presentation walkthrough with realistic persona data.
+
+---
+
+## 💻 Technology Stack
+
+- **Backend**: Python 3.10+, FastAPI, Pydantic v2, Uvicorn, SQLite 3, HTTPX.
+- **Frontend**: Vanilla JavaScript (ES6+), CSS3 Flexbox/Grid (dark cyan cyberpunk theme), HTML5.
+- **Browser Voice APIs**: Web Speech API (`SpeechRecognition` / `webkitSpeechRecognition` & `SpeechSynthesis`).
+- **Testing**: Pytest, FastAPI `TestClient`, Unittest mock fixtures.
+
+---
+
+## 📁 Project Directory Structure
 
 ```text
-USER VOICE / TEXT (Desktop & Web Dashboard)
-        ↓
-DRAX VOICE / TEXT INTERFACE (Vosk Kaldi Offline / Web Speech / GUI)
-        ↓
-CENTRAL AGENT & CONTEXT MANAGER (Multi-turn memory & SQLite preferences)
-        ↓
-INTENT PARSER & MULTI-STEP PLANNER (Clause decomposition into ActionSteps)
-        ↓
-SECURITY & RISK GATES (Allowlist validation, confirmation boundaries)
-        ↓
-DISPATCH LAYER (Cloud API Tools vs WebSocket Remote Windows Agent)
-        ↓
-EXECUTION (Windows OS / Playwright Browser / Cloud APIs / SQLite DB)
-        ↓
-STRUCTURED RESPONSE (Async TTS Voice + Holographic HUD + Web Dashboard)
+drax-ai-v2/
+├── backend/
+│   ├── sales_agent/               # [NEW] Autonomous AI Sales Voice Agent Module
+│   │   ├── __init__.py
+│   │   ├── conversation.py        # Dialogue orchestrator & consultative persona
+│   │   ├── database.py            # Isolated SQLite persistence (sales_agent.db)
+│   │   ├── lead_qualifier.py      # Entity extraction & non-destructive merging
+│   │   ├── lead_scoring.py        # Explainable 0-100 BANT rubric & reasoning
+│   │   ├── llm_provider.py        # OpenAI-compatible client & Demo fallback
+│   │   ├── router.py              # FastAPI APIRouter (/api/sales endpoints)
+│   │   └── schemas.py             # Pydantic validation schemas
+│   ├── services/
+│   │   └── api_service.py         # Main local FastAPI service & static mount
+│   └── ...                        # Core Drax assistant modules
+├── cloud/
+│   └── main.py                    # Cloud production FastAPI entry point
+├── data/
+│   ├── sales_agent.db             # [ISOLATED] Dedicated Sales Agent database
+│   └── drax.db                    # Core Drax assistant database
+├── docs/
+│   ├── ARCHITECTURE.md            # Detailed component & data flow diagrams
+│   ├── PROJECT_REPORT.md          # 1-page executive hiring submission report
+│   ├── SCALABILITY.md             # 100k user scalability, security & cost model
+│   ├── INTERVIEW_PREPARATION.md   # Speakable Q&A guide for technical evaluations
+│   └── DEMO_GUIDE.md              # 3-5 minute live demonstration walkthrough script
+├── tests/
+│   ├── test_sales_agent.py        # 33 targeted sales agent unit tests
+│   ├── test_e2e_verification.py   # Multi-turn customer lifecycle verification test
+│   └── ...                        # 103 existing Drax core tests
+└── web/
+    ├── app.js                     # Web controller, Web Speech STT/TTS, REST client
+    ├── index.html                 # Dashboard markup with Sales Voice Agent tab
+    └── styles.css                 # Cybernetic responsive styles & BANT meters
 ```
 
-### System Components:
-
-1. **Windows Desktop Agent (`desktop_app.py` / `dist/DraxAI/DraxAI.exe`)**:
-   - Resides locally on the user's physical PC.
-   - Manages audio hardware, wake-word listener, Windows application launching/closing, Playwright browser instances, local SQLite persistence, and hardware media keys.
-   - Runs in the background via the Windows System Tray with single-instance mutex enforcement.
-   - Operates 100% offline if internet/cloud is unavailable.
-
-2. **Cloud Backend API (`cloud/main.py`)**:
-   - Production FastAPI ASGI application deployed on [Render](https://drax-cloud-api.onrender.com) with CORS and WebSocket relay.
-   - Manages device pairing codes (`DRAX-xxxx`), cloud-synced task/reminder endpoints, and public proxies for finance/news/weather.
-   - Dispatches remote execution requests from web dashboards to target paired Windows agents over secure WebSockets.
-
-3. **Web Dashboard (`web/`)**:
-   - Responsive, zero-dependency static web client deployed on [Vercel](https://draxai-nine.vercel.app) styled in a futuristic cyberpunk cyan aesthetic.
-   - Connects to paired Windows PCs via WebSocket/REST, enabling remote PC control (*"Open Chrome"*, *"Open Spotify"*, *"Lock Workstation"*).
-
 ---
 
-## 💻 Tech Stack
+## 🚀 Installation & Setup
 
-* **Core Language**: Python 3.10+ / JavaScript (ES6+)
-* **Desktop GUI**: PyQt5 (60 FPS animated cybernetic avatar HUD, system tray integration)
-* **Speech Recognition**: Vosk (offline Kaldi ASR), SpeechRecognition (Google fallback)
-* **Voice Synthesis (TTS)**: pyttsx3 (SAPI5 offline asynchronous engine)
-* **Browser Automation**: Playwright (Chromium engine)
-* **Database & Persistence**: SQLite3 (thread-safe connection pool)
-* **Cloud & REST API**: FastAPI, Uvicorn, Starlette, Pydantic, WebSockets
-* **System & Windows APIs**: pywin32 (`win32com`, `win32gui`, `win32con`), `ctypes.windll`, `psutil`, `winreg`
-* **Packaging**: PyInstaller (custom multi-asset `.spec` bundle)
-* **Testing**: Pytest, HTTPX
+### 1. Prerequisites
+- Python 3.10 or higher
+- Google Chrome, Microsoft Edge, or Safari (for Web Speech voice recognition)
 
----
-
-## ⚙️ Installation & Setup
-
-### 1. Clone Repository
+### 2. Environment Setup
 ```bash
+# Clone the repository
 git clone https://github.com/drax102/DRAX-AI.git
 cd DRAX-AI
-```
 
-### 2. Create Virtual Environment
-```powershell
-python -m venv venv
-.\venv\Scripts\Activate.ps1
-```
+# Activate existing virtual environment (or create a new one)
+.\venv\Scripts\activate   # Windows
+# source venv/bin/activate # Linux/macOS
 
-### 3. Install Dependencies
-```bash
+# Install dependencies if starting fresh
 pip install -r requirements.txt
 ```
 
-### 4. Vosk Model Verification
-Drax includes the offline `vosk-model-small-en-us-0.15` model in `models/vosk-model-small-en-us-0.15/`. If missing, download it from [alphacephei.com/vosk/models](https://alphacephei.com/vosk/models) and extract it into the `models/` directory.
+### 3. Environment Configuration (`.env`)
+Create or edit `.env` in the root directory:
+
+```ini
+# --- Autonomous Sales Voice Agent Configuration ---
+# Leave blank to use the built-in deterministic Demo Engine (Zero Cost, No API keys required)
+SALES_LLM_API_KEY=
+SALES_LLM_BASE_URL=https://api.openai.com/v1
+SALES_LLM_MODEL=gpt-4o-mini
+SALES_LLM_TIMEOUT_SECONDS=15.0
+
+# --- General System Settings ---
+DRAX_ENV=development
+```
+
+> [!TIP]
+> If `SALES_LLM_API_KEY` is not provided, the system automatically runs in **Demo Mode** (`demo-sales-engine`). It requires no internet access or API credits and generates realistic consultative responses for evaluation.
 
 ---
 
-## 🚀 Running Drax AI
+## ⚡ Application Startup
 
-### Interactive Foreground GUI:
-```powershell
-python desktop_app.py
-```
-
-### Silent Always-On Background Mode (System Tray):
-```powershell
-.\venv\Scripts\pythonw.exe desktop_app.py
-```
-
-* Say **"Hey Drax"** anytime to activate the assistant.
-* Right-click the cyan system tray icon to pause listening, test microphone, view device pairing code, toggle Windows startup, or exit.
-
----
-
-## 🔨 Building Portable Windows Executable
-
-To build the standalone Windows binary (`dist/DraxAI/DraxAI.exe`):
-
-```powershell
-pyinstaller drax_ai.spec --clean --noconfirm
-```
-
-The output bundle is generated in:
-```text
-dist/DraxAI/
-├── DraxAI.exe
-└── _internal/ (models, web assets, PyQt5 DLLs, Python runtime)
-```
-*This executable runs on any clean Windows 10/11 system without requiring Python to be installed.*
-
----
-
-## 🌐 Deployment Architecture
-
-Drax AI utilizes a hybrid cloud-edge deployment architecture separating public web interfaces from secure local desktop automation:
-
-| Component | Platform | URL / Location | Technology | Purpose |
-| :--- | :--- | :--- | :--- | :--- |
-| **Web Dashboard** | **Vercel** | [https://draxai-nine.vercel.app](https://draxai-nine.vercel.app) | Vanilla ES6+, CSS3, Cyberpunk UI | User interface accessible from any browser or mobile device for remote PC actions, chat, and telemetry. |
-| **Cloud API Backend** | **Render** | [https://drax-cloud-api.onrender.com](https://drax-cloud-api.onrender.com) | FastAPI, Uvicorn, WebSockets, Python 3.10+ | Central orchestration layer handling device pairing, cloud tool execution, REST endpoints, and WebSocket message relay. |
-| **Windows Desktop Agent** | **Local Windows PC** | Local Workstation (`desktop_app.py`) | PyQt5, Vosk Kaldi, Playwright, Win32 API | Background service running on the user's PC with system tray integration, wake-word listener, and local action execution. |
-| **Communication Layer** | **WebSocket (WSS)** | `wss://drax-cloud-api.onrender.com/ws/device/{id}` | Secure WebSockets + REST | Asynchronous bidirectional communication channel for instant tool dispatch, execution correlation, and telemetry heartbeats. |
-
-### How Device Pairing & Remote Execution Works:
-1. **Agent Registration**: The local Windows Agent generates a secure pairing code (e.g. `DRAX-7K92`) via the Cloud API.
-2. **Dashboard Connection**: The user inputs the pairing code into the [Vercel Dashboard](https://draxai-nine.vercel.app).
-3. **WebSocket Relay**: The Cloud API associates the session with the persistent WebSocket connection of the Windows workstation.
-4. **Command Routing**: When a command like *"Open Chrome"* or *"Play Believer on Spotify"* is submitted from any device, the Cloud routes the instruction over WebSocket to the physical PC, executes it natively, and returns the result in real time.
-
----
-
-## 🧪 QA & Test Automation
-
-Drax AI is engineered with rigorous test automation practices, deterministic unit testing, REST API validation, and end-to-end browser automation:
-
-### 1. Automated Test Suite (Pytest)
-The test suite consists of **52 automated tests** executing in CI/CD and local environments:
+Run the verified startup command in your terminal:
 
 ```bash
-python -m pytest tests/ -v
+.\venv\Scripts\python -m uvicorn backend.services.api_service:api_app --host 127.0.0.1 --port 8765
 ```
 
-```text
-============================= test session starts =============================
-platform win32 -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0
-collected 52 items
+Open your browser to:
+**`http://localhost:8765`**
 
-tests/test_app_matching.py ..                                            [  3%]
-tests/test_cloud_api.py ......                                           [ 15%]
-tests/test_db_features.py ....                                           [ 23%]
-tests/test_full_suite.py ............                                    [ 46%]
-tests/test_intent_routing.py ...                                         [ 51%]
-tests/test_pairing_and_remote.py ................                        [ 82%]
-tests/test_planner.py ....                                               [ 90%]
-tests/test_safety.py ..                                                  [ 94%]
-tests/test_wake_word.py ...                                              [100%]
+Click the **"Sales Voice Agent"** button in the sidebar to open the live sales qualification terminal.
 
-============================= 52 passed in 29.49s =============================
+---
+
+## 📡 REST API Reference
+
+All sales endpoints are prefixed under `/api/sales`:
+
+| Method | Endpoint | Description | Status Codes |
+| :--- | :--- | :--- | :---: |
+| `POST` | `/api/sales/sessions` | Initialize a new sales session with 128-bit CSPRNG token | `201 Created` |
+| `POST` | `/api/sales/sessions/{session_id}/messages` | Send customer voice transcript/text & get AI response with live score | `200 OK`, `400`, `404`, `502`, `504` |
+| `GET` | `/api/sales/sessions/{session_id}/history` | Retrieve chronological dialogue turns for the session | `200 OK`, `404` |
+| `GET` | `/api/sales/sessions/{session_id}/lead` | Retrieve live BANT qualification scores, breakdown, and lead details | `200 OK`, `404` |
+
+---
+
+## 🧪 Testing Instructions
+
+Run the complete test suite (137 tests):
+
+```bash
+# Run all project tests (Core Drax + Sales Agent + E2E Lifecycle)
+.\venv\Scripts\pytest tests/ -v
+
+# Run only the Sales Voice Agent test suites
+.\venv\Scripts\pytest tests/test_sales_agent.py tests/test_e2e_verification.py -v
 ```
 
-### 2. QA Automation Highlights & Capabilities:
-* **Playwright Browser Automation**:
-  - Full browser lifecycle management with Chromium headless/headful automation (`backend/tools/browser_tools.py`).
-  - Automated web navigation, resilient DOM selector queries, element clicking, keyboard input typing, scrolling, hovering, and dynamic content scraping.
-  - Exception handling and timeout recovery for flaky or slow web pages.
-* **FastAPI REST API Automation (`fastapi.testclient.TestClient`)**:
-  - Automated integration testing of endpoints: `GET /health`, `GET /status`, `POST /command`, `POST /api/pair/generate`, `POST /api/pair/connect`, `GET /api/devices`.
-  - CORS header validation across cross-origin production requests from Vercel (`Access-Control-Allow-Origin`, preflight `OPTIONS`).
-  - Negative testing for malformed requests (empty commands, invalid JSON, nonexistent pairing codes).
-* **WebSocket Lifecycle & Integration Testing**:
-  - Test coverage for WebSocket registration, persistent device mapping, and reconnection lifecycles.
-  - Regression testing for socket replacement race conditions (`test_socket_replacement_safe_disconnect`) to ensure reconnects never orphan active sockets.
-  - Heartbeat telemetry verification and timeout detection ($\le 45\text{s}$).
-  - Asynchronous Future correlation testing (`create_pending_request` / `resolve_pending_request` using `request_id` and `command_id`).
-* **Command Routing & Intent Classification Testing**:
-  - Intent parser verification ensuring local PC tools (`open_app`, `play_media`, `lock_pc`, `take_screenshot`) correctly route to the Windows Agent.
-  - Cloud tool verification ensuring external data queries (`get_weather`, `get_stock_price`, `get_news`, `search_web`) execute server-side without requiring a paired PC.
-* **Security & Safety Gate Testing**:
-  - Strict allowlist enforcement verifying unregistered tool names and raw shell commands are rejected before execution.
-  - Confirmation gate validation for destructive system operations (`shutdown_pc`, `restart_pc`).
-* **Database & Persistence Testing**:
-  - SQLite transaction testing for task CRUD, reminder scheduling, and preference management with thread-safe isolation.
+**Verification Results**:
+- `tests/test_sales_agent.py`: 33 passed
+- `tests/test_e2e_verification.py`: 1 passed (complete customer journey)
+- Full Project Suite: **137 passed in ~60 seconds (100% pass rate, 0 regressions)**
 
 ---
 
-## 🎬 Demo Commands
+## 📸 Interface Screenshots
 
-Try speaking or typing the following commands:
-
-* 🗣️ *"Hey Drax"*
-* 🗣️ *"Open Spotify and play music"*
-* 🗣️ *"What is Nvidia stock price?"*
-* 🗣️ *"What is the latest AI news?"*
-* 🗣️ *"What is the weather in Delhi?"*
-* 🗣️ *"Remind me to prepare for my interview at 8 PM."*
-* 🗣️ *"Open Chrome and search Python developer jobs."*
-* 🗣️ *"Open GTA V"*
-* 🗣️ *"Close Spotify"*
-* 🗣️ *"What are my tasks?"*
-* 🗣️ *"Set an alarm for 7:00 AM"*
-* 🗣️ *"Lock workstation"*
+| Sales Voice Agent Split Interface | Live BANT Lead Intelligence Panel |
+| :---: | :---: |
+| `[Screenshot Placeholder: web/screenshots/sales_terminal.png]` *(Dialogue terminal with user voice input & AI consultative response)* | `[Screenshot Placeholder: web/screenshots/lead_intelligence.png]` *(Radial score badge, 4 BANT progress bars & customer details)* |
 
 ---
 
-## 🛡️ Security & Privacy
+## ⚠️ Known Limitations & Evaluation Disclosures
 
-* **Strict Tool Allowlist**: User speech and web commands map strictly to registered tool schemas. Raw shell execution (`cmd.exe`, `PowerShell`, `os.system`) is strictly prohibited.
-* **Confirmation Boundaries**: High-risk actions (`shutdown_pc`, `restart_pc`) pause execution and require explicit user confirmation.
-* **Local Data Sovereignty**: Personal files, database records, and microphone audio are processed locally on the workstation.
-* **Safe Error Propagation**: Detailed errors are categorized without exposing sensitive system secrets or private environment variables.
-
----
-
-## 🗺️ Roadmap
-
-- [x] Continuous offline "Hey Drax" wake-word recognition (Vosk Kaldi)
-- [x] Deep 6-tier Windows application discovery & control
-- [x] Native hardware-level media controls
-- [x] Multi-step agentic planning & clause decomposition
-- [x] SQLite-persisted tasks, reminders, and alarms
-- [x] Playwright browser navigation, typing, clicking, and reading
-- [x] Real-time US & Indian market financial quotes (100% free)
-- [x] Verified Google News RSS feeds & Open-Meteo weather
-- [x] Animated 60 FPS cybernetic avatar HUD with system tray background mode
-- [x] Standalone PyInstaller portable Windows executable
-- [x] Production FastAPI cloud backend with WebSocket relay & device pairing
-- [x] Responsive public web dashboard
-- [ ] Mobile companion app (React Native / PWA)
-- [ ] Local LLM integration (Ollama / Llama-3 / Phi-3 GGUF via llama.cpp)
-- [ ] Vision-language multi-modal screen comprehension
+1. **Active LLM Engine**: The current active provider is `DemoLLMProvider` (`demo-sales-engine`). While the `OpenAICompatibleProvider` is implemented and unit-tested via mock fixtures, live external LLM API connectivity has NOT been validated against external paid endpoints in this environment.
+2. **Physical Voice Hardware**: Software-level Web Speech API integration is implemented and tested in code; live acoustic verification with physical microphones and speakers across diverse hardware setups remains marked as pending manual user evaluation.
+3. **Storage Concurrency**: Current MVP uses SQLite with thread locking (`data/sales_agent.db`). For concurrent enterprise scale, migrate to managed PostgreSQL as detailed in the scalability proposal.
+4. **Scalability Disclosure**: The 100,000-user architecture in [docs/SCALABILITY.md](docs/SCALABILITY.md) is an architectural and systems design proposal, not an empirical load-tested result.
+5. **Browser Speech Costs**: While browser-native Web Speech incurs no direct backend API billing, proprietary browser engines (such as Chrome) process speech through vendor services subject to quota and policy variations, and browsers like Firefox lack native support.
+6. **Session Authentication**: Current MVP utilizes 128-bit CSPRNG session IDs (`sales_[0-9a-f]{32}`). Production multi-tenant deployments should pair session IDs with signed JWT bearer tokens and RBAC.
 
 ---
 
-## ⚠️ Known Limitations
+## 🔮 Future Improvements
 
-1. **Hardware Media Keys**: Media control uses standard Windows OS virtual key codes (`user32.dll keybd_event`); target media apps (Spotify, YouTube, VLC) must support standard Windows media events.
-2. **Microphone Access**: If multiple audio applications lock the microphone in exclusive mode, Drax gracefully waits and automatically reconnects when the stream is freed.
-3. **Playwright Automation**: Automated browser interactions run headless or headful depending on configuration; first-time Playwright usage requires `playwright install chromium`.
-
----
-
-## 📸 Screenshots
-
-*(Add your UI and Web Dashboard screenshots here)*
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+- [ ] **Streaming Speech (SSE)**: Stream token generation and audio chunks for $< 250\text{ms}$ time-to-first-voice response.
+- [ ] **CRM Integrations**: Direct webhook dispatches to Salesforce, HubSpot, and Marketo when lead status reaches `QUALIFIED`.
+- [ ] **Calendar Integration**: Direct booking integration (Calendly / Cal.com API) within the voice dialogue when high buying intent is detected.
+- [ ] **PostgreSQL Migration**: Production relational schema with connection pooling for 100k user horizontal scale.

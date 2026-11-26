@@ -49,6 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initFinance();
   initNews();
   initTelemetry();
+  initSalesTab();
 });
 
 // ── Tabs Navigation ──────────────────────────────────────────────────────────
@@ -75,6 +76,7 @@ function initTabs() {
       if (tabId === 'finance') loadFinance();
       if (tabId === 'news') loadNews('world');
       if (tabId === 'system') loadTelemetry();
+      if (tabId === 'sales') initSalesTab();
     });
   });
 }
@@ -966,5 +968,682 @@ async function loadTelemetry() {
     }
   } catch (err) {
     console.debug('[DRAX API] Telemetry polling fallback:', err);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── AUTONOMOUS AI SALES VOICE AGENT CONTROLLER ──────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+let salesInitialized = false;
+let currentSalesSessionId = null;
+let isSalesVoiceEnabled = true;
+let isSalesListening = false;
+let isSalesProcessing = false;
+let salesSpeechRecognition = null;
+
+function initSalesTab() {
+  if (salesInitialized) {
+    if (currentSalesSessionId) {
+      refreshSalesLead(currentSalesSessionId);
+    }
+    return;
+  }
+  salesInitialized = true;
+
+  const inputEl = document.getElementById('sales-input');
+  const sendBtn = document.getElementById('sales-send-btn');
+  const micBtn = document.getElementById('sales-mic-btn');
+  const voiceToggleBtn = document.getElementById('sales-voice-toggle-btn');
+  const stopSpeechBtn = document.getElementById('sales-stop-speech-btn');
+  const newSessionBtn = document.getElementById('sales-new-session-btn');
+
+  // Check for existing session in sessionStorage
+  const storedSession = sessionStorage.getItem('drax_sales_session_id');
+  if (storedSession) {
+    currentSalesSessionId = storedSession;
+    updateSalesSessionUI(currentSalesSessionId);
+    loadSalesHistory(currentSalesSessionId);
+    refreshSalesLead(currentSalesSessionId);
+  } else {
+    createNewSalesSession();
+  }
+
+  // Send button listener
+  if (sendBtn) {
+    sendBtn.addEventListener('click', () => {
+      if (inputEl) {
+        const text = inputEl.value.trim();
+        if (text) handleSalesSend(text);
+      }
+    });
+  }
+
+  // Enter key in input field
+  if (inputEl) {
+    inputEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        const text = inputEl.value.trim();
+        if (text) handleSalesSend(text);
+      }
+    });
+  }
+
+  // New session button
+  if (newSessionBtn) {
+    newSessionBtn.addEventListener('click', () => {
+      createNewSalesSession();
+    });
+  }
+
+  // Voice toggle (TTS) button
+  if (voiceToggleBtn) {
+    voiceToggleBtn.addEventListener('click', () => {
+      toggleSalesVoice();
+    });
+  }
+
+  // Stop speech playback button
+  if (stopSpeechBtn) {
+    stopSpeechBtn.addEventListener('click', () => {
+      stopSalesSpeech();
+    });
+  }
+
+  // Browser Speech-to-Text Setup
+  setupSalesSpeechRecognition(micBtn, inputEl);
+}
+
+function updateSalesVoiceStatus(statusText) {
+  const statusEl = document.getElementById('sales-voice-status');
+  if (statusEl) {
+    statusEl.innerText = statusText;
+  }
+}
+
+function updateSalesSessionUI(sessionId) {
+  const labelEl = document.getElementById('sales-session-label');
+  const indicatorEl = document.getElementById('sales-session-indicator');
+  if (labelEl) {
+    labelEl.innerText = `Session: ${sessionId}`;
+  }
+  if (indicatorEl) {
+    indicatorEl.style.background = '#00ff88';
+    indicatorEl.style.boxShadow = '0 0 8px #00ff88';
+  }
+}
+
+async function createNewSalesSession() {
+  stopSalesSpeech();
+  if (isSalesListening && salesSpeechRecognition) {
+    try { salesSpeechRecognition.stop(); } catch (_) {}
+  }
+
+  const labelEl = document.getElementById('sales-session-label');
+  if (labelEl) labelEl.innerText = 'Creating session...';
+
+  try {
+    const resp = await fetch(`${API_BASE}/api/sales/sessions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+
+    if (!resp.ok) {
+      throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+    }
+
+    const data = await resp.json();
+    currentSalesSessionId = data.session_id;
+    sessionStorage.setItem('drax_sales_session_id', currentSalesSessionId);
+    updateSalesSessionUI(currentSalesSessionId);
+
+    // Reset dialogue terminal
+    const terminal = document.getElementById('sales-chat-messages');
+    if (terminal) {
+      terminal.innerHTML = `
+        <div class="msg system">
+          <i class="fa-solid fa-headset"></i> New sales consultation session initialized (<code>${currentSalesSessionId}</code>). Speak via microphone or type to begin qualification.
+        </div>
+      `;
+    }
+
+    // Reset Lead card
+    resetLeadCardUI();
+    updateSalesVoiceStatus('Ready');
+
+    const inputEl = document.getElementById('sales-input');
+    if (inputEl) {
+      inputEl.value = '';
+      inputEl.focus();
+    }
+  } catch (err) {
+    console.error('[DRAX Sales] Error initializing session:', err);
+    if (labelEl) labelEl.innerText = 'Session error';
+    appendSalesMessage(`Failed to initialize sales session: ${err.message}. Ensure backend is running.`, 'system');
+  }
+}
+
+async function loadSalesHistory(sessionId) {
+  const terminal = document.getElementById('sales-chat-messages');
+  if (!terminal) return;
+
+  try {
+    const resp = await fetch(`${API_BASE}/api/sales/sessions/${encodeURIComponent(sessionId)}/history`);
+    if (!resp.ok) {
+      if (resp.status === 404) {
+        console.warn(`[DRAX Sales] Session ${sessionId} expired or not found. Creating new session.`);
+        createNewSalesSession();
+        return;
+      }
+      throw new Error(`HTTP ${resp.status}`);
+    }
+
+    const data = await resp.json();
+    const turns = data.turns || [];
+
+    terminal.innerHTML = '';
+    if (turns.length === 0) {
+      terminal.innerHTML = `
+        <div class="msg system">
+          <i class="fa-solid fa-headset"></i> Sales Voice Assistant Ready (<code>${sessionId}</code>). Speak via microphone or type to begin qualification.
+        </div>
+      `;
+    } else {
+      turns.forEach(t => {
+        appendSalesMessage(t.content, t.role);
+      });
+      terminal.scrollTop = terminal.scrollHeight;
+    }
+
+    const turnsCountEl = document.getElementById('lead-turns-count');
+    if (turnsCountEl) turnsCountEl.innerText = String(turns.length);
+  } catch (err) {
+    console.warn('[DRAX Sales] Error loading history:', err);
+  }
+}
+
+async function refreshSalesLead(sessionId) {
+  try {
+    const resp = await fetch(`${API_BASE}/api/sales/sessions/${encodeURIComponent(sessionId)}/lead`);
+    if (!resp.ok) return;
+    const lead = await resp.json();
+    updateLeadCardUI(lead);
+  } catch (err) {
+    console.warn('[DRAX Sales] Error refreshing lead data:', err);
+  }
+}
+
+function resetLeadCardUI() {
+  updateLeadCardUI({
+    lead_score: 0,
+    buying_intent: 'unqualified',
+    qualification_status: 'in_progress',
+    name: null,
+    company: null,
+    email: null,
+    phone: null,
+    role: null,
+    need: null,
+    budget: null,
+    timeline: null,
+    score_breakdown: {
+      budget_score: 0,
+      authority_score: 0,
+      need_score: 0,
+      timeline_score: 0,
+      total_score: 0,
+      reasoning: 'New session started. No qualification data recorded yet.'
+    }
+  });
+  const turnsCountEl = document.getElementById('lead-turns-count');
+  if (turnsCountEl) turnsCountEl.innerText = '0';
+}
+
+function updateLeadCardUI(lead) {
+  if (!lead) return;
+
+  // Lead score
+  const scoreVal = lead.lead_score || 0;
+  const scoreEl = document.getElementById('lead-score-val');
+  if (scoreEl) {
+    scoreEl.innerText = String(scoreVal);
+    const box = scoreEl.closest('.score-radial-box');
+    if (box) {
+      if (scoreVal >= 70) {
+        box.style.borderColor = 'var(--accent-green)';
+        box.style.boxShadow = '0 0 16px rgba(0, 255, 136, 0.35)';
+        scoreEl.style.color = 'var(--accent-green)';
+      } else if (scoreVal >= 40) {
+        box.style.borderColor = 'var(--accent-cyan)';
+        box.style.boxShadow = '0 0 16px rgba(0, 243, 255, 0.3)';
+        scoreEl.style.color = 'var(--accent-cyan)';
+      } else {
+        box.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+        box.style.boxShadow = 'none';
+        scoreEl.style.color = 'var(--text-muted)';
+      }
+    }
+  }
+
+  // Buying Intent
+  const intentVal = lead.buying_intent || 'unqualified';
+  const intentEl = document.getElementById('lead-intent-val');
+  if (intentEl) {
+    intentEl.innerText = intentVal.charAt(0).toUpperCase() + intentVal.slice(1);
+    intentEl.className = '';
+    intentEl.classList.add(`intent-${intentVal.toLowerCase()}`);
+  }
+
+  // Qualification Status & Badge
+  const statusVal = lead.qualification_status || 'in_progress';
+  const statusEl = document.getElementById('lead-status-val');
+  if (statusEl) {
+    statusEl.innerText = statusVal;
+  }
+
+  const badgeEl = document.getElementById('sales-qual-badge');
+  if (badgeEl) {
+    badgeEl.innerText = statusVal.toUpperCase().replace(/_/g, ' ');
+    badgeEl.className = '';
+    if (statusVal === 'qualified') {
+      badgeEl.classList.add('qual-badge-qualified');
+    } else if (statusVal === 'disqualified') {
+      badgeEl.classList.add('qual-badge-disqualified');
+    } else if (statusVal === 'follow_up') {
+      badgeEl.classList.add('qual-badge-followup');
+    } else {
+      badgeEl.classList.add('qual-badge-inprogress');
+    }
+  }
+
+  // BANT Breakdown
+  const b = lead.score_breakdown || {};
+  const budget = b.budget_score || 0;
+  const authority = b.authority_score || 0;
+  const need = b.need_score || 0;
+  const timeline = b.timeline_score || 0;
+
+  const budgetScoreEl = document.getElementById('bant-budget-score');
+  const budgetFillEl = document.getElementById('bant-budget-fill');
+  if (budgetScoreEl) budgetScoreEl.innerText = `${budget} / 25`;
+  if (budgetFillEl) budgetFillEl.style.width = `${Math.min(100, (budget / 25) * 100)}%`;
+
+  const authScoreEl = document.getElementById('bant-authority-score');
+  const authFillEl = document.getElementById('bant-authority-fill');
+  if (authScoreEl) authScoreEl.innerText = `${authority} / 25`;
+  if (authFillEl) authFillEl.style.width = `${Math.min(100, (authority / 25) * 100)}%`;
+
+  const needScoreEl = document.getElementById('bant-need-score');
+  const needFillEl = document.getElementById('bant-need-fill');
+  if (needScoreEl) needScoreEl.innerText = `${need} / 25`;
+  if (needFillEl) needFillEl.style.width = `${Math.min(100, (need / 25) * 100)}%`;
+
+  const timeScoreEl = document.getElementById('bant-timeline-score');
+  const timeFillEl = document.getElementById('bant-timeline-fill');
+  if (timeScoreEl) timeScoreEl.innerText = `${timeline} / 25`;
+  if (timeFillEl) timeFillEl.style.width = `${Math.min(100, (timeline / 25) * 100)}%`;
+
+  // Customer Details Table
+  const setDetail = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.innerText = val ? String(val) : 'Not provided';
+  };
+  setDetail('lead-field-name', lead.name);
+  setDetail('lead-field-company', lead.company);
+  setDetail('lead-field-email', lead.email);
+  setDetail('lead-field-phone', lead.phone);
+  setDetail('lead-field-role', lead.role);
+  setDetail('lead-field-need', lead.need);
+  setDetail('lead-field-budget', lead.budget);
+  setDetail('lead-field-timeline', lead.timeline);
+
+  // Score Explanation / Reasoning
+  const reasonEl = document.getElementById('lead-reasoning-text');
+  if (reasonEl) {
+    reasonEl.innerText = b.reasoning || (scoreVal > 0 ? 'Lead evaluated against BANT framework.' : 'No evaluation criteria recorded yet.');
+  }
+}
+
+function appendSalesMessage(text, role) {
+  const terminal = document.getElementById('sales-chat-messages');
+  if (!terminal) return;
+
+  const msgDiv = document.createElement('div');
+  const isUser = role === 'user';
+  const isSys = role === 'system';
+
+  msgDiv.className = `msg ${isUser ? 'user' : isSys ? 'system' : 'drax'}`;
+
+  const headerDiv = document.createElement('div');
+  headerDiv.style.fontSize = '0.75rem';
+  headerDiv.style.marginBottom = '4px';
+
+  if (isUser) {
+    headerDiv.style.color = 'rgba(0, 243, 255, 0.7)';
+    headerDiv.style.textAlign = 'right';
+    headerDiv.innerHTML = '<i class="fa-solid fa-user"></i> Prospect / Client';
+  } else if (isSys) {
+    headerDiv.style.color = 'var(--text-muted)';
+    headerDiv.innerHTML = '<i class="fa-solid fa-circle-info"></i> System';
+  } else {
+    headerDiv.style.color = 'var(--accent-green)';
+    headerDiv.innerHTML = '<i class="fa-solid fa-headset"></i> DRAX Sales Voice Agent';
+  }
+
+  const textSpan = document.createElement('div');
+  textSpan.style.whiteSpace = 'pre-wrap';
+  textSpan.style.wordBreak = 'break-word';
+  textSpan.textContent = text;
+
+  msgDiv.appendChild(headerDiv);
+  msgDiv.appendChild(textSpan);
+  terminal.appendChild(msgDiv);
+  terminal.scrollTop = terminal.scrollHeight;
+}
+
+function showSalesLoading() {
+  const terminal = document.getElementById('sales-chat-messages');
+  if (!terminal) return null;
+
+  const div = document.createElement('div');
+  div.className = 'msg drax loading-msg';
+  div.id = 'sales-loading-bubble';
+  div.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Consulting sales agent...';
+  terminal.appendChild(div);
+  terminal.scrollTop = terminal.scrollHeight;
+  return div;
+}
+
+function removeSalesLoading() {
+  const el = document.getElementById('sales-loading-bubble');
+  if (el && el.parentNode) {
+    el.parentNode.removeChild(el);
+  }
+}
+
+async function handleSalesSend(rawText) {
+  const text = (rawText || '').trim();
+  if (!text || isSalesProcessing) return;
+
+  // Stop any active speech recognition to avoid duplicate trailing events
+  if (isSalesListening && salesSpeechRecognition) {
+    try { salesSpeechRecognition.stop(); } catch (_) {}
+  }
+
+  // Ensure active session
+  if (!currentSalesSessionId) {
+    await createNewSalesSession();
+    if (!currentSalesSessionId) return;
+  }
+
+  isSalesProcessing = true;
+  const inputEl = document.getElementById('sales-input');
+  const sendBtn = document.getElementById('sales-send-btn');
+  const micBtn = document.getElementById('sales-mic-btn');
+
+  if (inputEl) {
+    inputEl.value = '';
+    inputEl.disabled = true;
+  }
+  if (sendBtn) sendBtn.disabled = true;
+  if (micBtn) micBtn.disabled = true;
+
+  // Append user's message
+  appendSalesMessage(text, 'user');
+  showSalesLoading();
+  updateSalesVoiceStatus('Processing...');
+
+  try {
+    const resp = await fetch(`${API_BASE}/api/sales/sessions/${encodeURIComponent(currentSalesSessionId)}/messages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({ message: text })
+    });
+
+    removeSalesLoading();
+
+    if (!resp.ok) {
+      if (resp.status === 404) {
+        appendSalesMessage('Sales session expired. Starting a fresh consultation session...', 'system');
+        await createNewSalesSession();
+        return;
+      }
+      let errDetail = `Server error (HTTP ${resp.status})`;
+      try {
+        const errJson = await resp.json();
+        if (errJson.detail) errDetail = errJson.detail;
+      } catch (_) {}
+      appendSalesMessage(`Agent Error: ${errDetail}`, 'system');
+      updateSalesVoiceStatus('Error');
+      return;
+    }
+
+    const data = await resp.json();
+
+    // Render agent dialogue
+    appendSalesMessage(data.response, 'assistant');
+
+    // Update engine badge
+    const modelBadge = document.getElementById('sales-model-badge');
+    if (modelBadge) {
+      if (data.is_demo) {
+        modelBadge.innerText = 'DEMO ENGINE';
+        modelBadge.className = 'badge-demo';
+      } else {
+        modelBadge.innerText = (data.model_used || 'AI ENGINE').toUpperCase();
+        modelBadge.className = 'badge-live';
+      }
+    }
+
+    // Update turns logged
+    const turnsCountEl = document.getElementById('lead-turns-count');
+    if (turnsCountEl) {
+      turnsCountEl.innerText = String(data.history_length || 0);
+    }
+
+    // Refresh lead scores and qualification card
+    await refreshSalesLead(currentSalesSessionId);
+
+    // Speak AI voice if enabled
+    if (isSalesVoiceEnabled) {
+      speakSalesUtterance(data.response);
+    } else {
+      updateSalesVoiceStatus('Ready');
+    }
+
+  } catch (netErr) {
+    removeSalesLoading();
+    console.error('[DRAX Sales] Network error:', netErr);
+    appendSalesMessage(`Network Error: ${netErr.message}. Ensure backend is reachable.`, 'system');
+    updateSalesVoiceStatus('Error');
+  } finally {
+    isSalesProcessing = false;
+    if (inputEl) {
+      inputEl.disabled = false;
+      inputEl.focus();
+    }
+    if (sendBtn) sendBtn.disabled = false;
+    if (micBtn) micBtn.disabled = false;
+  }
+}
+
+// ── Voice Output (TTS via SpeechSynthesis) ───────────────────────────────────
+function cleanTextForSpeech(text) {
+  if (!text) return '';
+  return text
+    .replace(/[*#_`~]/g, '')
+    .replace(/https?:\/\/\S+/g, 'link')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function speakSalesUtterance(text) {
+  if (!('speechSynthesis' in window)) {
+    console.warn('[DRAX Sales] Browser does not support SpeechSynthesis.');
+    updateSalesVoiceStatus('Ready (TTS unsupported)');
+    return;
+  }
+
+  // Stop any active speech
+  window.speechSynthesis.cancel();
+
+  const clean = cleanTextForSpeech(text);
+  if (!clean) {
+    updateSalesVoiceStatus('Ready');
+    return;
+  }
+
+  const utterance = new SpeechSynthesisUtterance(clean);
+  utterance.rate = 1.0;
+  utterance.pitch = 1.0;
+
+  // Select preferred natural English voice if available
+  const voices = window.speechSynthesis.getVoices();
+  if (voices && voices.length > 0) {
+    const preferredVoice = voices.find(v =>
+      (v.lang.startsWith('en') && (v.name.includes('Google') || v.name.includes('Natural') || v.name.includes('Samantha') || v.name.includes('Zira') || v.name.includes('David')))
+    ) || voices.find(v => v.lang.startsWith('en'));
+    if (preferredVoice) utterance.voice = preferredVoice;
+  }
+
+  utterance.onstart = () => {
+    updateSalesVoiceStatus('Speaking...');
+  };
+
+  utterance.onend = () => {
+    updateSalesVoiceStatus('Ready');
+  };
+
+  utterance.onerror = (e) => {
+    console.warn('[DRAX Sales] SpeechSynthesis playback error:', e);
+    updateSalesVoiceStatus('Ready');
+  };
+
+  window.speechSynthesis.speak(utterance);
+}
+
+function stopSalesSpeech() {
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+  }
+  updateSalesVoiceStatus('Ready');
+}
+
+function toggleSalesVoice() {
+  isSalesVoiceEnabled = !isSalesVoiceEnabled;
+  const toggleBtn = document.getElementById('sales-voice-toggle-btn');
+  const iconEl = document.getElementById('sales-voice-icon');
+  const labelEl = document.getElementById('sales-voice-label');
+
+  if (isSalesVoiceEnabled) {
+    if (toggleBtn) toggleBtn.classList.remove('voice-off');
+    if (iconEl) iconEl.className = 'fa-solid fa-volume-high';
+    if (labelEl) labelEl.innerText = 'Voice On';
+  } else {
+    stopSalesSpeech();
+    if (toggleBtn) toggleBtn.classList.add('voice-off');
+    if (iconEl) iconEl.className = 'fa-solid fa-volume-xmark';
+    if (labelEl) labelEl.innerText = 'Voice Off';
+  }
+}
+
+// ── Voice Input (STT via Web Speech API) ─────────────────────────────────────
+function setupSalesSpeechRecognition(micBtn, inputEl) {
+  if (!micBtn) return;
+
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  if (!SpeechRecognition) {
+    console.warn('[DRAX Sales] Web Speech Recognition is not supported by this browser.');
+    micBtn.title = 'Speech recognition not supported in this browser (Use text input)';
+    micBtn.addEventListener('click', () => {
+      alert('Speech recognition is not supported in this browser.\nPlease use Google Chrome, Microsoft Edge, or Safari, or use keyboard text input.');
+    });
+    return;
+  }
+
+  try {
+    salesSpeechRecognition = new SpeechRecognition();
+    salesSpeechRecognition.continuous = false;
+    salesSpeechRecognition.interimResults = true;
+    salesSpeechRecognition.lang = 'en-US';
+
+    let speechSubmitted = false;
+
+    salesSpeechRecognition.onstart = () => {
+      isSalesListening = true;
+      speechSubmitted = false;
+      micBtn.classList.add('mic-active');
+      updateSalesVoiceStatus('Listening...');
+    };
+
+    salesSpeechRecognition.onresult = (event) => {
+      if (isSalesProcessing || speechSubmitted) return;
+
+      let interimTranscript = '';
+      let finalTranscript = '';
+
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          finalTranscript += event.results[i][0].transcript;
+        } else {
+          interimTranscript += event.results[i][0].transcript;
+        }
+      }
+
+      if (inputEl) {
+        inputEl.value = finalTranscript || interimTranscript;
+      }
+
+      // If a final speech turn is captured, auto-submit exactly once
+      if (finalTranscript.trim() && !speechSubmitted) {
+        speechSubmitted = true;
+        try { salesSpeechRecognition.stop(); } catch (_) {}
+        handleSalesSend(finalTranscript.trim());
+      }
+    };
+
+    salesSpeechRecognition.onerror = (event) => {
+      isSalesListening = false;
+      micBtn.classList.remove('mic-active');
+      console.warn('[DRAX Sales] Speech recognition error:', event.error);
+
+      if (event.error === 'not-allowed') {
+        alert('Microphone access was denied. Please allow microphone permissions in your browser to use voice input.');
+      }
+      updateSalesVoiceStatus('Ready');
+    };
+
+    salesSpeechRecognition.onend = () => {
+      isSalesListening = false;
+      micBtn.classList.remove('mic-active');
+      const statusEl = document.getElementById('sales-voice-status');
+      if (statusEl && statusEl.innerText === 'Listening...') {
+        updateSalesVoiceStatus('Ready');
+      }
+    };
+
+    micBtn.addEventListener('click', () => {
+      if (isSalesProcessing) return;
+
+      if (isSalesListening) {
+        try { salesSpeechRecognition.stop(); } catch (_) {}
+      } else {
+        stopSalesSpeech();
+        try {
+          salesSpeechRecognition.start();
+        } catch (err) {
+          console.warn('[DRAX Sales] Speech start error:', err);
+        }
+      }
+    });
+
+  } catch (initErr) {
+    console.error('[DRAX Sales] Failed to initialize SpeechRecognition:', initErr);
   }
 }

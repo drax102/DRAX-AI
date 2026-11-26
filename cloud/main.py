@@ -706,6 +706,11 @@ async def ws_client_endpoint(websocket: WebSocket, client_id: str = "web_client"
         logger.warning(f"Client WebSocket error: {e}")
 
 
+# Mount Autonomous AI Sales Voice Agent Router (/api/sales)
+from backend.sales_agent.router import sales_router
+app.include_router(sales_router)
+
+
 # Mount Web Dashboard static assets if directory exists
 _WEB_DIR = os.path.join(_PROJECT_ROOT, "web")
 if os.path.isdir(_WEB_DIR):

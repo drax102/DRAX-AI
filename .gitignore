@@ -7,8 +7,24 @@ __pycache__/
 # Virtual environments
 venv/
 env/
-.env
 .venv/
+
+# Environment and sensitive credential files
+.env
+.env.*
+*.env
+!.env.example
+*.pem
+*.key
+*.cert
+*.pfx
+
+# SQLite & database files (machine-specific runtime data)
+*.db
+*.sqlite
+*.sqlite3
+data/
+data/*.db
 
 # PyInstaller build artifacts
 build/
@@ -22,12 +38,10 @@ warn-*.txt
 xref-*.html
 
 # Logs & Screenshots
+logs/
 logs/*.log
 logs/*.log.*
 logs/screenshots/*
-
-# SQLite Data (machine-specific database generated at runtime)
-data/*.db
 
 # App index (machine-specific paths generated at runtime)
 backend/data/app_index.json
@@ -47,6 +61,7 @@ desktop.ini
 .eggs/
 .pytest_cache/
 .coverage
+htmlcov/
 
 # Temporary files
 *.tmp
